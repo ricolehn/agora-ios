@@ -139,110 +139,211 @@ struct TightLabelStyle: LabelStyle {
     }
 }
 
-/// Events tab card (`.churchtools-event-card`): 16:9 cover (or gradient), floating leaf, tags, capacity footer.
+/// Soft color mesh where an event has no picture (`.ct-event-card-fallback-cover`): radial spots over surfaceAlt.
+struct ColorMesh: View {
+    let spots: [(point: UnitPoint, color: Color)]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let radius = max(proxy.size.width, proxy.size.height) * 0.55
+            ZStack {
+                Palette.surfaceAlt
+                ForEach(spots.indices, id: \.self) { index in
+                    RadialGradient(colors: [spots[index].color, .clear], center: spots[index].point, startRadius: 0, endRadius: radius)
+                }
+            }
+        }
+    }
+
+    static func event(pinned: Bool) -> ColorMesh {
+        pinned
+            ? ColorMesh(spots: [(point: UnitPoint(x: 0.2, y: 0.25), color: Color(hex: 0x6366F1, opacity: 0.42)),
+                                (point: UnitPoint(x: 0.85, y: 0.3), color: Color(hex: 0x06B6D4, opacity: 0.32)),
+                                (point: UnitPoint(x: 0.5, y: 1), color: Color(hex: 0xA855F7, opacity: 0.25))])
+            : ColorMesh(spots: [(point: UnitPoint(x: 0.18, y: 0.22), color: Color(hex: 0x06B6D4, opacity: 0.38)),
+                                (point: UnitPoint(x: 0.82, y: 0.28), color: Color(hex: 0x6366F1, opacity: 0.32)),
+                                (point: UnitPoint(x: 0.55, y: 1), color: Color(hex: 0x10B981, opacity: 0.28))])
+    }
+}
+
+/// Events tab card like the web app (beta16): the 16:9 picture sits inset with its own rounded corners, frosted
+/// labels on it, a color mesh without a picture, bold title with the own registration next to it, colored meta
+/// icons, capacity and a round arrow. Highlights get a gradient frame, past pictures lose their color.
 struct EventCoverCard: View {
     @Environment(AppStore.self) private var store
     let event: AgoraEvent
+
+    private var accent: Color { event.isPinned ? Palette.indigo : Palette.primary }
 
     var body: some View {
         let past = event.isPast()
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
-                cover
+                cover(past: past)
                 CalendarLeaf(day: event.date, color: event.categoryColor, floating: true)
                     .padding(10)
-                VStack(alignment: .trailing, spacing: 6) {
-                    glassChip(past ? "⌛ Vorbei" : (event.isPinned ? "Großevent" : "Event"))
-                    if let user = store.user, let badge = EventBadge.of(event, user: user) {
-                        EventBadgeView(badge: badge).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Radius.chip))
-                    }
+                HStack(spacing: 6) {
+                    coverLabel
+                    status(past: past)
                 }
-                .padding(10)
+                .padding(12)
                 .frame(maxWidth: .infinity, alignment: .topTrailing)
             }
-            VStack(alignment: .leading, spacing: 8) {
-                Text(event.title).font(.system(size: 17, weight: .bold)).foregroundStyle(Palette.text).lineLimit(2)
-                VStack(alignment: .leading, spacing: 4) {
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    Text(event.title)
+                        .font(.system(size: 18, weight: .heavy))
+                        .tracking(-0.2)
+                        .foregroundStyle(Palette.text)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    // Own registration next to the title, independent of the status on the picture
+                    if event.isRegistered && !past {
+                        StatusPill(text: String(localized: "Angemeldet"), color: Palette.success, systemImage: "checkmark")
+                    }
+                }
+                VStack(alignment: .leading, spacing: 6) {
                     if event.isMultiDay {
-                        Label(Formats.span(event.date, event.endDate), systemImage: "calendar")
-                            .foregroundStyle(Palette.primary).fontWeight(.semibold)
+                        meta("calendar", Formats.span(event.date, event.endDate), color: event.isPinned ? accent : Palette.text, bold: true)
                     } else {
                         let time = Formats.clockRange(event.startTime, event.endTime)
-                        Label(time.isEmpty ? Formats.mediumDay(event.date) : "\(Formats.mediumDay(event.date)) · \(time)", systemImage: "clock")
+                        meta("clock", time.isEmpty ? Formats.mediumDay(event.date) : "\(Formats.mediumDay(event.date)) · \(time)")
                     }
-                    if !event.location.isEmpty { Label(event.location, systemImage: "mappin.and.ellipse").lineLimit(1) }
+                    if !event.location.isEmpty { meta("mappin.and.ellipse", event.location) }
                 }
-                .font(.system(size: 13))
-                .foregroundStyle(Palette.textSecondary)
-                .labelStyle(TightLabelStyle())
-                Hairline()
-                HStack {
+                HStack(spacing: 10) {
                     capacity
-                    Spacer()
-                    Text("Details ›")
-                        .font(.system(size: 12.5, weight: .bold))
-                        .foregroundStyle(Palette.primary)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(Palette.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: Radius.chip))
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Palette.text)
+                        .frame(width: 40, height: 40)
+                        .background(Palette.surfaceAlt, in: Circle())
+                        .overlay(Circle().strokeBorder(Palette.borderLight, lineWidth: 1))
+                        .accessibilityHidden(true)
                 }
+                .padding(.top, 4)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 8)
+            .padding(.top, 14)
+            .padding(.bottom, 6)
         }
-        .background(Palette.surface)
-        .background(LinearGradient(colors: [(event.isPinned ? Palette.indigo : Palette.primary).opacity(0.05), .clear],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.list, style: .continuous))
-        .shadow(color: Palette.shadow, radius: 6, y: 3)
-        .opacity(past ? 0.65 : 1)
+        .padding(8)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            if event.isPinned {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(LinearGradient(colors: [Color(hex: 0x6366F1), Color(hex: 0x06B6D4), Color(hex: 0x10B981)],
+                                                 startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.5)
+            } else {
+                RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1)
+            }
+        }
+        .shadow(color: event.isPinned ? Color(hex: 0x6366F1, opacity: 0.22) : Color(hex: 0x0F172A, opacity: 0.1), radius: 10, y: 6)
         .accessibilityElement(children: .combine)
     }
 
-    /// 16:9 cover over the full card width; without a picture a gradient with a calendar tile.
-    private var cover: some View {
-        let url = store.api.absolute(event.imageUrl)
-        return CoverImage(url: url) {
+    /// 16:9 picture, or the color mesh with a frosted calendar tile; darker edges keep the labels readable.
+    private func cover(past: Bool) -> some View {
+        CoverImage(url: store.api.absolute(event.imageUrl)) {
             ZStack {
-                LinearGradient(colors: [Palette.primary.opacity(0.25), Palette.indigo.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                ColorMesh.event(pinned: event.isPinned)
                 Image(systemName: "calendar")
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(Palette.primary)
-                    .frame(width: 52, height: 52)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .foregroundStyle(accent)
+                    .frame(width: 56, height: 56)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.5), lineWidth: 1))
+                    .shadow(color: Color(hex: 0x0F172A, opacity: 0.2), radius: 10, y: 6)
             }
         } overlay: {
-            if url != nil {
-                LinearGradient(stops: [.init(color: .black.opacity(0.18), location: 0), .init(color: .clear, location: 0.45),
-                                       .init(color: .black.opacity(0.28), location: 1)], startPoint: .top, endPoint: .bottom)
+            LinearGradient(stops: [.init(color: Color(hex: 0x0F172A, opacity: 0.28), location: 0), .init(color: .clear, location: 0.34),
+                                   .init(color: .clear, location: 0.7), .init(color: Color(hex: 0x0F172A, opacity: 0.18), location: 1)],
+                           startPoint: .top, endPoint: .bottom)
+        }
+        .saturation(past ? 0.3 : 1)
+        .background(Palette.surfaceAlt)
+    }
+
+    /// Frosted "EVENT" / "GROSSEVENT" label (indigo for highlights).
+    private var coverLabel: some View {
+        Text(event.isPinned ? "Großevent" : "Event")
+            .font(.system(size: 11, weight: .heavy))
+            .textCase(.uppercase)
+            .tracking(0.6)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .background(event.isPinned ? Color(hex: 0x4F46E5, opacity: 0.62) : Color(hex: 0x0F172A, opacity: 0.38), in: Capsule())
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(.white.opacity(event.isPinned ? 0.45 : 0.35), lineWidth: 1))
+    }
+
+    /// Light status chip on the picture: past, own duty, open request, waiting list, full.
+    @ViewBuilder
+    private func status(past: Bool) -> some View {
+        if past {
+            statusChip(String(localized: "⌛ Vorbei"), color: Palette.slate, icon: nil)
+        } else if let user = store.user, let badge = EventBadge.of(event, user: user, showRegistered: false) {
+            switch badge {
+            case .duty(let role): statusChip(role, color: Palette.indigo, icon: "person.fill")
+            case .requestOpen: statusChip(String(localized: "Anfrage offen"), color: Palette.amberText, icon: "clock")
+            case .waitlist: statusChip(String(localized: "Warteliste"), color: Palette.amberText, icon: "hourglass")
+            case .full: statusChip(String(localized: "Ausgebucht"), color: Palette.danger, icon: nil)
+            case .registered, .openDuties: EmptyView()
             }
         }
     }
 
-    private func glassChip(_ text: LocalizedStringKey) -> some View {
-        Text(text)
-            .font(.system(size: 10.5, weight: .bold))
-            .textCase(.uppercase)
-            .tracking(0.5)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .background((event.isPinned ? Color(hex: 0x6366F1) : Color(hex: 0x0E7490)).opacity(0.75), in: Capsule())
-            .background(.ultraThinMaterial, in: Capsule())
+    private func statusChip(_ text: String, color: Color, icon: String?) -> some View {
+        HStack(spacing: 4) {
+            if let icon { Image(systemName: icon).font(.system(size: 10, weight: .bold)) }
+            Text(text).lineLimit(1)
+        }
+        .font(.system(size: 11.5, weight: .heavy))
+        .foregroundStyle(color)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Palette.surface.opacity(0.88), in: Capsule())
+        .background(.ultraThinMaterial, in: Capsule())
+    }
+
+    private func meta(_ icon: String, _ text: String, color: Color = Palette.textSecondary, bold: Bool = false) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(accent)
+                .frame(width: 16)
+            Text(text)
+                .font(.system(size: 14, weight: bold ? .bold : .regular))
+                .foregroundStyle(color)
+                .lineLimit(1)
+        }
     }
 
     @ViewBuilder
     private var capacity: some View {
         if !event.requiresRegistration {
-            Text("Ohne Anmeldung").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Palette.textSecondary)
+            footerPill(String(localized: "Ohne Anmeldung"))
         } else if event.maxParticipants > 0 {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("\(event.registeredCount) / \(event.maxParticipants) Plätze").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Palette.text)
-                CapsuleProgress(value: Double(event.registeredCount) / Double(max(event.maxParticipants, 1)), height: 4).frame(width: 110)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("\(event.registeredCount)/\(event.maxParticipants) Plätze").font(.system(size: 12.5, weight: .bold)).foregroundStyle(Palette.text)
+                CapsuleProgress(value: Double(event.registeredCount) / Double(max(event.maxParticipants, 1)), height: 6).frame(width: 120)
             }
         } else {
-            Text("\(event.registeredCount) angemeldet").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Palette.text)
+            footerPill(String(localized: "\(event.registeredCount) angemeldet"))
         }
+    }
+
+    private func footerPill(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12.5, weight: .semibold))
+            .foregroundStyle(Palette.textSecondary)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .background(Palette.surfaceAlt, in: Capsule())
+            .overlay(Capsule().strokeBorder(Palette.borderLight, lineWidth: 1))
     }
 }
 

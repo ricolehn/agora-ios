@@ -18,7 +18,7 @@ let package = Package(
             bundleIdentifier: "org.agora.app",
             teamIdentifier: "",
             displayVersion: "1.0.0",
-            bundleVersion: "1",
+            bundleVersion: "2",
             appIcon: .placeholder(icon: .leaf),
             accentColor: .presetColor(.cyan),
             supportedDeviceFamilies: [

@@ -89,6 +89,19 @@ enum Formats {
         return formatter("MMMMyyyy").string(from: date)
     }
 
+    /// "Samstag, 3. Oktober" (start page greeting).
+    static func greetingDate(_ date: Date = Date()) -> String { formatter("EEEEdMMMM").string(from: date) }
+
+    /// "Heute", "Morgen", the weekday within a week, else "Sa., 17. Okt." (start page "Als Nächstes").
+    static func relativeDay(_ day: String, today: String = Day.today()) -> String {
+        if day <= today { return String(localized: "Heute") }
+        guard let date = Day.date(day), let start = Day.date(today) else { return day }
+        let days = Calendar.current.dateComponents([.day], from: start, to: date).day ?? 0
+        if days == 1 { return String(localized: "Morgen") }
+        if days < 7 { return formatter("EEEE").string(from: date) }
+        return formatter("EEEdMMM").string(from: date)
+    }
+
     /// Calendar leaf parts: "OKT", "17", "Sa".
     static func leaf(_ day: String) -> (month: String, day: String, weekday: String) {
         guard let date = Day.date(day) else { return ("", "?", "") }

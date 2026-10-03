@@ -57,16 +57,25 @@ struct TabPage<Content: View>: View {
     var refresh: (@MainActor () async -> Void)?
     @ViewBuilder var content: Content
 
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: spacing) {
-                TabHeader()
-                content
+        // iPad: the whole width with a margin that grows with the screen (like the web); iPhone: 20pt margins
+        GeometryReader { proxy in
+            let regular = sizeClass == .regular
+            let gutter = PageLayout.gutter(width: proxy.size.width, regular: regular)
+            ScrollView {
+                VStack(alignment: .leading, spacing: spacing) {
+                    TabHeader()
+                    content
+                }
+                .padding(.horizontal, gutter)
+                .padding(.bottom, 32)
+                .frame(maxWidth: regular ? .infinity : 800)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 32)
-            .frame(maxWidth: 800)
-            .frame(maxWidth: .infinity)
+            .environment(\.pageGutter, gutter)
+            .environment(\.pageContentWidth, max(0, min(proxy.size.width, regular ? .infinity : 800) - gutter * 2))
         }
         .scrollDismissesKeyboard(.interactively)
         .background(Palette.background.ignoresSafeArea())
@@ -123,8 +132,12 @@ struct TabHeader: View {
                         Label("Abmelden", systemImage: "rectangle.portrait.and.arrow.right")
                     }
                 } label: {
+                    // Room for the ring's glow: the menu clips its label to the label frame while it animates
                     Avatar(userId: user.userId, name: user.fullName, size: 36, ring: user.ring)
+                        .padding(10)
+                        .contentShape(Circle())
                 }
+                .padding(-10)
                 .accessibilityLabel("Profilmenü")
             }
         }

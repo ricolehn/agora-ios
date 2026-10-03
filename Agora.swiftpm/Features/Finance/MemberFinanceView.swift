@@ -21,22 +21,23 @@ struct MemberFinanceView: View {
         TabPage {
             if let user = store.user {
                 PageTitle("Finanzen")
-                FinanceStatusCard(user: user, person: store.data.ownPerson, showDetails: true,
-                                  onStatusTap: store.data.ownPerson == nil ? nil : { newRequest = .status })
-                PageTitle("Meine Anfragen") {
-                    if user.pays && store.data.ownPerson != nil {
-                        Button { newRequest = .payment } label: { Label("Neue Anfrage", systemImage: "plus") }
-                            .buttonStyle(.agoraPrimary(small: true, fullWidth: false))
+                // iPad: status and requests on the left, the history on the right (like the web)
+                TwoPane(spacing: 16, leftShare: 0.54) {
+                    FinanceStatusCard(user: user, person: store.data.ownPerson, showDetails: true,
+                                      onStatusTap: store.data.ownPerson == nil ? nil : { newRequest = .status })
+                    PageTitle("Meine Anfragen") {
+                        if user.pays && store.data.ownPerson != nil {
+                            Button { newRequest = .payment } label: { Label("Neue Anfrage", systemImage: "plus") }
+                                .buttonStyle(.agoraPrimary(small: true, fullWidth: false))
+                        }
                     }
-                }
-                .padding(.top, 6)
-                if store.data.ownRequests.isEmpty {
-                    EmptyState(systemImage: "tray", title: "Noch keine Anfragen.").card(padding: 0)
-                } else {
-                    ForEach(store.data.ownRequests) { request in RequestItem(request: request) }
-                }
-                if let person = store.data.ownPerson {
-                    if !person.standingOrders.isEmpty {
+                    .padding(.top, 6)
+                    if store.data.ownRequests.isEmpty {
+                        EmptyState(systemImage: "tray", title: "Noch keine Anfragen.").card(padding: 0)
+                    } else {
+                        ForEach(store.data.ownRequests) { request in RequestItem(request: request) }
+                    }
+                    if let person = store.data.ownPerson, !person.standingOrders.isEmpty {
                         Text("Daueraufträge").font(.agoraSection).foregroundStyle(Palette.text).padding(.top, 6)
                         VStack(spacing: 0) {
                             ForEach(Array(person.standingOrders.enumerated()), id: \.offset) { index, order in
@@ -46,8 +47,11 @@ struct MemberFinanceView: View {
                         }
                         .card(padding: 0)
                     }
-                    Text("Verlauf").font(.agoraSection).foregroundStyle(Palette.text).padding(.top, 6)
-                    FinanceTimeline(person: person).card()
+                } right: {
+                    if let person = store.data.ownPerson {
+                        Text("Verlauf").font(.agoraSection).foregroundStyle(Palette.text)
+                        FinanceTimeline(person: person).card()
+                    }
                 }
             }
         }

@@ -44,6 +44,14 @@ struct EventsView: View {
                 }
             }
         }
+        .onAppear(perform: showTermineIfRequested)
+        .onChange(of: router.termineRequested) { _, _ in showTermineIfRequested() }
+    }
+
+    private func showTermineIfRequested() {
+        guard router.termineRequested else { return }
+        router.termineRequested = false
+        tab = .termine
     }
 
     private var searched: [AgoraEvent] { store.data.events.filter { EventRules.matches($0, query: query) } }
@@ -58,11 +66,14 @@ struct EventsView: View {
             } else {
                 ForEach(EventRules.byMonth(days, day: { $0.day }), id: \.month) { group in
                     SectionHeader(title: Formats.monthYear(group.month), count: group.items.count)
-                    ForEach(group.items) { entry in
-                        Button { router.open(.event(entry.event.id)) } label: {
-                            EventRow(event: entry.event, day: entry.day, showRegistered: false)
+                    // iPad: several day cards per row
+                    AdaptiveGrid(minWidth: 420) {
+                        ForEach(group.items) { entry in
+                            Button { router.open(.event(entry.event.id)) } label: {
+                                EventRow(event: entry.event, day: entry.day, showRegistered: false)
+                            }
+                            .buttonStyle(.pressable)
                         }
-                        .buttonStyle(.pressable)
                     }
                 }
             }
@@ -81,11 +92,11 @@ struct EventsView: View {
         }
         if !highlights.isEmpty {
             SectionHeader(title: String(localized: "Highlights"), count: highlights.count, color: Palette.indigo)
-            ForEach(highlights) { cover($0) }
+            AdaptiveGrid(minWidth: 320, spacing: 16) { ForEach(highlights) { cover($0) } }
         }
         ForEach(EventRules.byMonth(upcoming.filter { !$0.isPinned }, day: { $0.date }), id: \.month) { group in
             SectionHeader(title: Formats.monthYear(group.month), count: group.items.count)
-            ForEach(group.items) { cover($0) }
+            AdaptiveGrid(minWidth: 320, spacing: 16) { ForEach(group.items) { cover($0) } }
         }
         if !past.isEmpty {
             let toggleTitle = showPast ? String(localized: "Abgelaufene Events ausblenden (\(past.count))")
@@ -103,7 +114,7 @@ struct EventsView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 6)
-            if showPast { ForEach(past) { cover($0) } }
+            if showPast { AdaptiveGrid(minWidth: 320, spacing: 16) { ForEach(past) { cover($0) } } }
         }
     }
 

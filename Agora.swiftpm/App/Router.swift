@@ -18,6 +18,8 @@ enum Route: Hashable {
 final class Router {
     var tab: AppTab = .home
     var paths: [AppTab: [Route]] = [:]
+    /// Set by the start page's "Alle" link: the events tab opens on the Termine list.
+    var termineRequested = false
 
     func path(_ tab: AppTab) -> Binding<[Route]> {
         Binding(get: { self.paths[tab] ?? [] }, set: { self.paths[tab] = $0 })
@@ -32,6 +34,13 @@ final class Router {
     func select(_ newTab: AppTab) {
         if newTab == tab { paths[newTab] = [] }
         tab = newTab
+    }
+
+    /// Opens the events tab on the Termine list (start page "Alle").
+    func openTermine() {
+        termineRequested = true
+        paths[.events] = []
+        tab = .events
     }
 
     func back() {

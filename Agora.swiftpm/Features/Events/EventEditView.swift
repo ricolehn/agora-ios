@@ -22,15 +22,19 @@ struct EventEditView: View {
 
     var body: some View {
         Form {
-            if isManager && eventId == nil {
+            if isManager {
                 Section {
-                    Picker("Art", selection: $input.eventType) {
+                    Picker("Art", selection: $input.eventType.animation()) {
                         Text("Termin").tag("termin")
                         Text("Event").tag("event")
                     }
                     .pickerStyle(.segmented)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
+                } footer: {
+                    Text(input.eventType == "termin"
+                         ? "Regulärer Termin (z. B. Bistro, Gebetstreff, Probe) – erscheint im Terminkalender."
+                         : "Besonderes Event (z. B. Jugendtreff, Konzert, Fest) – mit Titelbild & Programm.")
                 }
             }
             Section {
@@ -84,24 +88,27 @@ struct EventEditView: View {
             if !store.data.groups.isEmpty {
                 Section {
                     ForEach(store.data.groups) { group in
+                        // The web editor saves group names, the apps ids; both count as chosen
+                        let selected = input.targetGroups.contains(group.id) || input.targetGroups.contains(group.name)
                         Button {
-                            if input.targetGroups.contains(group.id) {
-                                input.targetGroups.removeAll { $0 == group.id }
+                            if selected {
+                                input.targetGroups.removeAll { $0 == group.id || $0 == group.name }
                             } else {
                                 input.targetGroups.append(group.id)
                             }
                         } label: {
                             HStack {
+                                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(selected ? Palette.primary : Palette.textSecondary)
                                 Text(group.name).foregroundStyle(Palette.text)
                                 Spacer()
-                                if input.targetGroups.contains(group.id) { Image(systemName: "checkmark").foregroundStyle(Palette.primary) }
                             }
                         }
                     }
                 } header: {
                     Text("Zielgruppen")
                 } footer: {
-                    Text("Keine Auswahl = für alle sichtbar")
+                    Text("Nur die gewählten Gruppen sehen den Eintrag. Ohne Auswahl sehen ihn alle Mitglieder.")
                 }
             }
             if eventId == nil && isManager && input.eventType == "termin" {
@@ -121,11 +128,12 @@ struct EventEditView: View {
                 Section { Text(error).foregroundStyle(Palette.danger) }
             }
         }
-        .navigationTitle(eventId != nil ? "Event bearbeiten" : (input.eventType == "termin" ? "Neuer Termin" : "Neues Event"))
+        .navigationTitle(eventId != nil ? (input.eventType == "termin" ? "Termin bearbeiten" : "Event bearbeiten")
+                         : (input.eventType == "termin" ? "Neuer Termin" : "Neues Event"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                if busy { ProgressView() } else { Button("Speichern", action: save).bold().disabled(uploading) }
+                if busy { ProgressView() } else { Button(eventId == nil ? "Veröffentlichen" : "Speichern", action: save).bold().disabled(uploading) }
             }
         }
         .onAppear(perform: prepare)

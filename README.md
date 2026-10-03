@@ -5,14 +5,14 @@ It talks to the same backend as the web app (PWA) and the [Android app](https://
 follows the web app's design and uses native iOS controls where people expect them – tab bar, navigation,
 forms in sheets, menus, confirmation dialogs, the photo picker and the share sheet.
 
-**Status:** `v1.0.0-beta1` – feature complete for members, treasurers, event managers and mentoring.
+**Status:** `v1.0.0-beta2` – feature complete for members, treasurers, event managers and mentoring.
 Push notifications are not available on iOS yet (see [Roadmap](#roadmap)).
 
 ## Features
 
 | Area | What the app does |
 |---|---|
-| **Start** | Greeting, membership fee status (paid until / open amount), open duty requests with *Accept* / *Decline*, your upcoming duties, unread mentoring messages |
+| **Start** | Greeting with date, overdue or soon-due membership fee (nothing while all is paid), open duty requests with *Accept* / *Decline*, *Als Nächstes* (the next five appointments and events as a swipeable row), your upcoming duties, unread mentoring messages |
 | **Finances (members)** | Fee status with monthly rate, requests (payment, standing order, status change, expense with receipts), request status and rejection reasons, standing orders, payment history |
 | **Finances (treasurers)** | Cash balance, open requests (approve / reject with reason), searchable and paged booking history with receipts, fee list (overdue / current), member details with payment booking, standing orders (end, also retroactively, or delete) and status changes, record donations and expenses |
 | **Events** | *Termine* (appointments, multi-day events on every day) and *Events* (cover cards, highlights, past events), search, detail page with map link, Markdown description, registration / waiting list, attendees, duty roster (answer requests, assign people or groups, add and remove tasks), create / edit / delete incl. 16:9 cover, target groups and recurring appointments |

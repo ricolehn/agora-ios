@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(AppStore.self) private var store
     @Environment(ToastCenter.self) private var toasts
     @Environment(\.openURL) private var openURL
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @AppStorage(AppInfo.themeKey) private var theme = ThemeChoice.system.rawValue
     @State private var runner = ActionRunner()
     @State private var photo: PhotosPickerItem?
@@ -23,18 +24,22 @@ struct SettingsView: View {
     var body: some View {
         List {
             if let user = store.user {
+                // Like the web: general settings first, administration, then calendar, privacy and account
                 profileSection(user)
-                if user.managesRegistrationCode { inviteSection }
-                notificationSection(user)
                 appearanceSection
-                if user.isAdmin { feeSection }
+                notificationSection(user)
                 passwordSection
+                if user.managesRegistrationCode { inviteSection }
+                if user.isAdmin { feeSection }
                 calendarSection
                 accountSection(user)
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        // iPad: a readable column in the middle (like the system settings detail pane)
+        .frame(maxWidth: sizeClass == .regular ? 760 : .infinity)
+        .frame(maxWidth: .infinity)
         .background(Palette.background.ignoresSafeArea())
         .navigationTitle("Einstellungen")
         .navigationBarTitleDisplayMode(.large)
@@ -224,7 +229,7 @@ struct SettingsView: View {
                 Button(role: .destructive) { deleting = true } label: { Label("Konto löschen", systemImage: "trash") }
             }
         } header: {
-            Text("Konto")
+            Text("Datenschutz & Konto")
         } footer: {
             Text("Agora iOS \(AppInfo.version)").frame(maxWidth: .infinity).padding(.top, 12)
         }

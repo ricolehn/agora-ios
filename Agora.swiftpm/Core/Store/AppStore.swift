@@ -28,7 +28,8 @@ struct AppData: Codable, Sendable {
 
     func event(_ id: String) -> AgoraEvent? { events.first { $0.id == id } }
     func thread(_ id: String) -> MentoringThread? { threads.first { $0.id == id } }
-    func groupName(_ id: String) -> String { groups.first { $0.id == id }?.name ?? id }
+    /// Name of a target group: ids are resolved, names (saved by the web editor) stay as they are.
+    func groupName(_ id: String) -> String { groups.first { $0.id == id || $0.name == id }?.name ?? id }
 }
 
 /// App state: session, member data, live updates. All screens read it; actions go through the repository and

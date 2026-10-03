@@ -59,6 +59,7 @@ struct EventDetailView: View {
                             .font(.system(size: 14))
                             .foregroundStyle(Palette.textSecondary)
                     }
+                    groupsLine(event)
                 }
                 InfoRow(icon: "calendar", color: Palette.violet, label: "Termin", value: Formats.eventWhen(event))
                 if !event.location.isEmpty { LocationRow(location: event.location) }
@@ -105,10 +106,26 @@ struct EventDetailView: View {
         let label: LocalizedStringKey = event.isPinned ? "★ Großevent & Highlight" : (event.isTermin ? "Termin" : "Event")
         return FlowLayout(spacing: 6) {
             CategoryTag(text: label, color: event.isPinned ? Palette.amberText : event.categoryColor)
-            ForEach(event.targetGroups, id: \.self) { group in
-                CategoryTag(text: LocalizedStringKey(store.data.groupName(group)), color: Palette.slate)
-            }
             if event.isCancelled { CategoryTag(text: "Abgesagt", color: Palette.danger) }
+        }
+    }
+
+    /// Target groups as a line under the organizer ("Event für die Gruppe „Technik“") instead of tags.
+    @ViewBuilder
+    private func groupsLine(_ event: AgoraEvent) -> some View {
+        let names = event.targetGroups.filter { !$0.isEmpty }.map { store.data.groupName($0) }
+            .reduce(into: [String]()) { list, name in if !list.contains(name) { list.append(name) } }
+        if !names.isEmpty {
+            let quoted = names.map { "„\($0)“" }
+            let list = quoted.count > 1 ? quoted.dropLast().joined(separator: ", ") + " und " + (quoted.last ?? "") : quoted[0]
+            let lead = "\(event.isTermin ? "Termin" : "Event") für \(names.count == 1 ? "die Gruppe" : "die Gruppen") "
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "person.2.fill").font(.system(size: 12)).foregroundStyle(Palette.indigo)
+                (Text(lead) + Text(list).bold().foregroundColor(Palette.text))
+                    .font(.system(size: 14))
+                    .foregroundStyle(Palette.textSecondary)
+            }
+            .accessibilityElement(children: .combine)
         }
     }
 
