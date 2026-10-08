@@ -17,7 +17,8 @@ struct EventEditView: View {
     @State private var photo: PhotosPickerItem?
     @State private var uploading = false
 
-    private var isManager: Bool { store.user.map { $0.managesEvents || $0.isAdmin } ?? false }
+    /// Appointments, highlights and series need the event permission, for admins too (like the server since v3.0.0).
+    private var isManager: Bool { store.user?.managesEvents ?? false }
     private var existing: AgoraEvent? { eventId.flatMap { store.data.event($0) } }
 
     var body: some View {

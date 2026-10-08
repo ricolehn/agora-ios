@@ -7,6 +7,8 @@ struct TreasurerView: View {
     @State private var model = TreasuryModel()
     @State private var tab: Tab = .overview
     @State private var entrySheet: FinanceEntrySheet.Kind?
+    @State private var openRequest: FinanceRequest?
+    @State private var reportOpen = false
 
     enum Tab: Hashable { case overview, members }
 
@@ -44,6 +46,10 @@ struct TreasurerView: View {
         .sheet(item: $entrySheet) { kind in
             FinanceEntrySheet(kind: kind) { Task { await model.load(store) } }
         }
+        .sheet(item: $openRequest) { request in
+            RequestDetailSheet(request: request, canDecide: canManage) { Task { await model.load(store) } }
+        }
+        .sheet(isPresented: $reportOpen) { ReportSheet(people: model.people) }
         .task { if !model.loaded { await model.load(store) } }
         .onChange(of: store.changeTick) { _, _ in
             if store.changedAreas.contains("all") { Task { await model.load(store) } }
@@ -52,7 +58,10 @@ struct TreasurerView: View {
 
     @ViewBuilder
     private var overview: some View {
-        if !model.pendingRequests.isEmpty { PendingRequestsCard(model: model, canManage: canManage) }
+        // Same order as the web: open requests, balance, history
+        if !model.pendingRequests.isEmpty {
+            OpenRequestsCard(requests: model.pendingRequests) { openRequest = $0 }
+        }
         VStack(spacing: 8) {
             Text("Aktueller Kassenstand")
                 .font(.system(size: 12, weight: .bold)).textCase(.uppercase).tracking(0.6)
@@ -66,7 +75,14 @@ struct TreasurerView: View {
         .background(Palette.brand, in: RoundedRectangle(cornerRadius: Radius.hero, style: .continuous))
         .shadow(color: Color(hex: 0x06B6D4, opacity: 0.25), radius: 12, y: 6)
         .accessibilityElement(children: .combine)
-        Text("Historie").font(.agoraSection).foregroundStyle(Palette.text).padding(.top, 4)
+        HStack {
+            Text("Historie").font(.agoraSection).foregroundStyle(Palette.text)
+            Spacer(minLength: 8)
+            // Financial report as PDF (like the web's "Bericht erstellen")
+            Button { reportOpen = true } label: { Label("Bericht erstellen", systemImage: "doc.text") }
+                .buttonStyle(.agoraSecondary(small: true, fullWidth: false))
+        }
+        .padding(.top, 4)
         SearchField(placeholder: "Historie durchsuchen…", text: $model.search)
             .onChange(of: model.search) { _, _ in model.searchChanged(store) }
         TransactionList(model: model)
@@ -146,82 +162,6 @@ final class TreasuryModel {
 }
 
 // MARK: - Requests
-
-struct PendingRequestsCard: View {
-    @Environment(AppStore.self) private var store
-    @Environment(ToastCenter.self) private var toasts
-    let model: TreasuryModel
-    let canManage: Bool
-    @State private var runner = ActionRunner()
-    @State private var rejecting: FinanceRequest?
-    @State private var reason = ""
-
-    var body: some View {
-        let groups = Dictionary(grouping: model.pendingRequests, by: \.personName).sorted { $0.key < $1.key }
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: "tray.and.arrow.down").foregroundStyle(Palette.primary)
-                CapsLabel("Offene Anfragen (\(model.pendingRequests.count))", color: Palette.text)
-            }
-            ForEach(groups, id: \.key) { group in
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(group.key, systemImage: "person.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.success)
-                    ForEach(group.value) { request in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Label(request.title, systemImage: request.icon).font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.text)
-                                Spacer()
-                                Text(Formats.dateTime(millis: request.timestamp)).font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(Palette.textSecondary)
-                                    .padding(.horizontal, 8).padding(.vertical, 3)
-                                    .background(Palette.surfaceAlt, in: Capsule())
-                            }
-                            if !request.detailChips.isEmpty {
-                                Text(request.detailChips.joined(separator: " · ")).font(.system(size: 13.5)).foregroundStyle(Palette.textSecondary)
-                            }
-                            if !request.receipts.isEmpty { ReceiptStrip(files: request.receipts) }
-                            if canManage {
-                                HStack(spacing: 8) {
-                                    Button { approve(request) } label: { Label("Genehmigen", systemImage: "checkmark") }
-                                        .buttonStyle(.agoraPrimary(small: true))
-                                    Button { reason = ""; rejecting = request } label: { Label("Ablehnen", systemImage: "xmark") }
-                                        .buttonStyle(.agoraSecondary(small: true))
-                                }
-                                .disabled(runner.busy)
-                            }
-                        }
-                        .padding(14)
-                        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.list, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: Radius.list, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1))
-                    }
-                }
-            }
-        }
-        .card(fill: Palette.surfaceAlt)
-        .alert("Anfrage ablehnen", isPresented: Binding(get: { rejecting != nil }, set: { if !$0 { rejecting = nil } })) {
-            TextField("Grund für Ablehnung", text: $reason)
-            Button("Abbrechen", role: .cancel) { rejecting = nil }
-            Button("Ablehnen", role: .destructive) {
-                if let request = rejecting { reject(request) }
-            }
-        }
-    }
-
-    private func approve(_ request: FinanceRequest) {
-        runner.run(toasts, success: String(localized: "Anfrage genehmigt")) {
-            try await store.repository.approveRequest(request)
-            await model.load(store)
-        }
-    }
-
-    private func reject(_ request: FinanceRequest) {
-        let text = reason
-        runner.run(toasts, success: String(localized: "Anfrage abgelehnt")) {
-            try await store.repository.rejectRequest(id: request.id, reason: text)
-            await model.load(store)
-        }
-    }
-}
 
 /// Thumbnails of receipts; tap opens them full screen.
 struct ReceiptStrip: View {
@@ -306,10 +246,15 @@ struct TransactionList: View {
             EmptyState(systemImage: "list.bullet.rectangle", title: "Keine Buchungen gefunden").card(padding: 0)
         } else {
             let days = EventRules.byMonth(model.transactions, day: { $0.date })
+            // Expenses show the issuer's picture: their account from the member records by name (like the web)
+            let uidByName = Dictionary(model.people.filter { !$0.uid.isEmpty }.map { ($0.name.trimmingCharacters(in: .whitespaces).lowercased(), $0.uid) },
+                                       uniquingKeysWith: { first, _ in first })
             ForEach(days, id: \.month) { group in
                 SectionHeader(title: Formats.monthYear(group.month))
                 ForEach(group.items) { transaction in
-                    Button { selected = transaction } label: { TransactionRow(transaction: transaction) }
+                    let avatar = transaction.type == "pay" ? transaction.personUid
+                        : (transaction.type == "exp" ? uidByName[transaction.who.trimmingCharacters(in: .whitespaces).lowercased()] : nil)
+                    Button { selected = transaction } label: { TransactionRow(transaction: transaction, avatarUserId: avatar) }
                         .buttonStyle(.pressable)
                 }
             }
@@ -329,16 +274,35 @@ extension Transaction {
     var kindLabel: LocalizedStringKey { type == "don" ? "Spende" : (type == "exp" ? "Ausgabe" : "Mitgliedsbeitrag") }
 }
 
+/// History row like the web: payments and expenses show the person's picture (initials without one; expenses with
+/// a small red € badge), donations the purple tile; who, description, signed amount.
 struct TransactionRow: View {
     let transaction: Transaction
+    var avatarUserId: String?
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: transaction.kindIcon)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(transaction.kindColor)
-                .frame(width: 40, height: 40)
-                .background(transaction.kindColor.opacity(0.15), in: Circle())
+            if transaction.type != "don" && !transaction.who.trimmingCharacters(in: .whitespaces).isEmpty {
+                Avatar(userId: avatarUserId, name: transaction.who, size: 40)
+                    .overlay(alignment: .bottomTrailing) {
+                        if transaction.type == "exp" {
+                            Image(systemName: "eurosign")
+                                .font(.system(size: 9, weight: .heavy))
+                                .foregroundStyle(.white)
+                                .frame(width: 16, height: 16)
+                                .background(Palette.danger, in: Circle())
+                                .padding(2)
+                                .background(Palette.surface, in: Circle())
+                                .offset(x: 4, y: 4)
+                        }
+                    }
+            } else {
+                Image(systemName: transaction.kindIcon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(transaction.kindColor)
+                    .frame(width: 40, height: 40)
+                    .background(transaction.kindColor.opacity(0.15), in: Circle())
+            }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(transaction.who.isEmpty ? "–" : transaction.who).font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.text).lineLimit(1)
@@ -472,7 +436,7 @@ struct PersonCard: View {
                                 .foregroundStyle(expanded ? Palette.primary : Palette.textSecondary)
                                 .rotationEffect(.degrees(expanded ? 90 : 0))
                         }
-                        CapsLabel(LocalizedStringKey(MemberStatus.label(person.effectiveStatus)))
+                        CapsLabel(LocalizedStringKey(MemberStatus.name(person.effectiveStatus)))
                     }
                     Spacer(minLength: 8)
                     VStack(alignment: .trailing, spacing: 4) {
@@ -522,7 +486,7 @@ struct PersonCard: View {
                         Button { sheet = .status } label: { Label("Status", systemImage: "arrow.triangle.2.circlepath") }.buttonStyle(.agoraSecondary)
                     }
                     CapsLabel("Verlauf")
-                    if detail == nil { ProgressView().frame(maxWidth: .infinity) } else { FinanceTimeline(person: shown) }
+                    if detail == nil { ProgressView().frame(maxWidth: .infinity) } else { FinanceTimeline(person: shown, plainStatus: true) }
                 }
                 .padding([.horizontal, .bottom], 16)
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -545,7 +509,7 @@ struct PersonCard: View {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
                     CapsLabel("Status")
-                    Text(MemberStatus.label(person.effectiveStatus)).font(.system(size: 14, weight: .bold)).foregroundStyle(Palette.text)
+                    Text(MemberStatus.name(person.effectiveStatus)).font(.system(size: 14, weight: .bold)).foregroundStyle(Palette.text)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 VStack(alignment: .leading, spacing: 4) {

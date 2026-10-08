@@ -5,20 +5,20 @@ It talks to the same backend as the web app (PWA) and the [Android app](https://
 follows the web app's design and uses native iOS controls where people expect them – tab bar, navigation,
 forms in sheets, menus, confirmation dialogs, the photo picker and the share sheet.
 
-**Status:** `v1.0.0-beta2` – feature complete for members, treasurers, event managers and mentoring.
+**Status:** `v1.0.0-beta3` – on par with Android beta3; feature complete for members, treasurers, event managers and mentoring.
 Push notifications are not available on iOS yet (see [Roadmap](#roadmap)).
 
 ## Features
 
 | Area | What the app does |
 |---|---|
-| **Start** | Greeting with date, overdue or soon-due membership fee (nothing while all is paid), open duty requests with *Accept* / *Decline*, *Als Nächstes* (the next five appointments and events as a swipeable row), your upcoming duties, unread mentoring messages |
-| **Finances (members)** | Fee status with monthly rate, requests (payment, standing order, status change, expense with receipts), request status and rejection reasons, standing orders, payment history |
-| **Finances (treasurers)** | Cash balance, open requests (approve / reject with reason), searchable and paged booking history with receipts, fee list (overdue / current), member details with payment booking, standing orders (end, also retroactively, or delete) and status changes, record donations and expenses |
-| **Events** | *Termine* (appointments, multi-day events on every day) and *Events* (cover cards, highlights, past events), search, detail page with map link, Markdown description, registration / waiting list, attendees, duty roster (answer requests, assign people or groups, add and remove tasks), create / edit / delete incl. 16:9 cover, target groups and recurring appointments |
+| **Start** | Greeting with date, overdue or soon-due membership fee (nothing while all is paid), open duty requests with *Accept* / *Decline*, open finance requests for treasurers, *Als Nächstes* (the next five appointments and events as a swipeable row), your upcoming duties, unread mentoring messages |
+| **Finances (members)** | Fee status with monthly rate, requests (payment, standing order, status change, expense with receipts), own requests with details, status and rejection reasons, standing orders, payment history |
+| **Finances (treasurers)** | Cash balance, open requests (detail sheet, approve / reject with reason), searchable and paged booking history with receipts and member avatars, **financial report as PDF** (annual, period, member or hand-picked bookings; compact / standard / detailed; preview, share, save to Files), fee list (overdue / current), member details with payment booking, standing orders (end, also retroactively, or delete) and status changes, record donations and expenses |
+| **Events** | *Termine* (appointments, multi-day events on every day; on iPad with a month calendar that jumps to the chosen day) and *Events* (cover cards, highlights, past events), search, detail page with map link, Markdown description, registration / waiting list, attendees, duty roster (answer requests, assign people or groups, add and remove tasks), create / edit / delete incl. 16:9 cover, target groups and recurring appointments |
 | **Mentoring** | Conversations with unread badges (mentees stay anonymous), chat with live polling, report / block / end / reopen, find and contact mentors anonymously, mentor application and profile, application review for mentoring managers |
 | **AI support** | Streaming answers rendered as Markdown, collapsible reasoning, report an answer; only with permission and when AI is enabled on the server |
-| **Settings** | Profile picture (cropped to 256×256 JPEG), registration code, notification preferences, colour scheme (system / light / dark), monthly fees (admins), password change, calendar subscription (Apple / Google Calendar), privacy policy, sign out, **account deletion** |
+| **Settings** | Sub-pages like the web: profile picture (cropped to 256×256 JPEG), registration code, notifications per channel (push / e-mail) and kind, colour scheme (system / light / dark), monthly fees (admins), password change, calendar subscription (Apple / Google Calendar), privacy policy, sign out, **account deletion** |
 
 While the app is open it listens to the server's live updates (`/api/stream`, server-sent events) and refreshes the
 affected data. It opens instantly with the last loaded data (kept on the device, excluded from backups, deleted on

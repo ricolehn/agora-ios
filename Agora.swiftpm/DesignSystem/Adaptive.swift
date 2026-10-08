@@ -11,7 +11,17 @@ private struct PageGutterKey: EnvironmentKey {
     static let defaultValue: CGFloat = 20
 }
 
+private struct PageScrollKey: EnvironmentKey {
+    static let defaultValue: ScrollViewProxy? = nil
+}
+
 extension EnvironmentValues {
+    /// Scrolls the current tab page to a view with an `.id` (e.g. a day in the Termine list); set by TabPage.
+    var pageScroll: ScrollViewProxy? {
+        get { self[PageScrollKey.self] }
+        set { self[PageScrollKey.self] = newValue }
+    }
+
     /// Width of a tab page's content (between the page margins); set by TabPage.
     var pageContentWidth: CGFloat {
         get { self[PageContentWidthKey.self] }

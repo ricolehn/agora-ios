@@ -6,7 +6,9 @@ import SwiftUI
 struct HomeView: View {
     @Environment(AppStore.self) private var store
     @Environment(Router.self) private var router
+    @State private var openRequest: FinanceRequest?
     private let upcomingCount = 5
+    private let requestRows = 3
 
     var body: some View {
         TabPage(spacing: 22) {
@@ -17,6 +19,16 @@ struct HomeView: View {
                     HomePaymentLine(person: person, overdue: true)
                 }
                 if !store.data.dutyRequests.isEmpty { DutyRequestCard() }
+                // Treasurers and the owner: open requests right after the duty requests (web beta18)
+                if !store.data.pendingRequests.isEmpty {
+                    // Without the finance tab view (owner only) all requests show here
+                    let toFinances = user.viewsFinances
+                    let showAll: (() -> Void)? = toFinances ? { router.select(.finances) } : nil
+                    OpenRequestsCard(requests: store.data.pendingRequests, limit: toFinances ? requestRows : .max,
+                                     onAll: showAll) {
+                        openRequest = $0
+                    }
+                }
                 if !store.data.loaded && store.data.events.isEmpty {
                     LoadingCard()
                 } else {
@@ -40,6 +52,9 @@ struct HomeView: View {
                     HomePaymentLine(person: person, overdue: false)
                 }
             }
+        }
+        .sheet(item: $openRequest) { request in
+            RequestDetailSheet(request: request, canDecide: store.user.map { $0.managesFinances || $0.owner } ?? false)
         }
     }
 
@@ -94,12 +109,15 @@ struct UpcomingRow: View {
                         .strokeBorder(Palette.border, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
+                    // All cards as tall as the tallest one of these events, the chip at the bottom: a fixed height for
+                    // the worst case (two-line title, place and chip) left empty space under most cards
                     HStack(alignment: .top, spacing: 12) {
                         ForEach(events) { event in
                             Button { router.open(.event(event.id)) } label: { NextCard(event: event, today: today, width: cardWidth) }
                                 .buttonStyle(.pressable)
                         }
                     }
+                    .fixedSize(horizontal: false, vertical: true)
                     .scrollTargetLayout()
                     .padding(.horizontal, gutter)
                     .padding(.bottom, 6)
@@ -279,10 +297,12 @@ struct NextCard: View {
             .padding(.horizontal, 8)
             .padding(.top, 10)
             .padding(.bottom, 6)
-            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+            // Grows to the height of the tallest card in the row (UpcomingRow), the chip stays at the bottom
+            .frame(maxWidth: .infinity, minHeight: 112, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding(6)
         .frame(width: width)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1))
         .shadow(color: Color(hex: 0x0F172A, opacity: 0.1), radius: 10, y: 6)

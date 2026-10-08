@@ -16,6 +16,7 @@ struct FinancesView: View {
 struct MemberFinanceView: View {
     @Environment(AppStore.self) private var store
     @State private var newRequest: RequestKind?
+    @State private var openRequest: FinanceRequest?
 
     var body: some View {
         TabPage {
@@ -25,18 +26,11 @@ struct MemberFinanceView: View {
                 TwoPane(spacing: 16, leftShare: 0.54) {
                     FinanceStatusCard(user: user, person: store.data.ownPerson, showDetails: true,
                                       onStatusTap: store.data.ownPerson == nil ? nil : { newRequest = .status })
-                    PageTitle("Meine Anfragen") {
-                        if user.pays && store.data.ownPerson != nil {
-                            Button { newRequest = .payment } label: { Label("Neue Anfrage", systemImage: "plus") }
-                                .buttonStyle(.agoraPrimary(small: true, fullWidth: false))
-                        }
+                    // What can be submitted (one tile per kind), then the own requests with their state (web beta18)
+                    if store.data.ownPerson != nil {
+                        RequestActions { newRequest = $0 }
                     }
-                    .padding(.top, 6)
-                    if store.data.ownRequests.isEmpty {
-                        EmptyState(systemImage: "tray", title: "Noch keine Anfragen.").card(padding: 0)
-                    } else {
-                        ForEach(store.data.ownRequests) { request in RequestItem(request: request) }
-                    }
+                    MyRequestsCard(requests: store.data.ownRequests) { openRequest = $0 }
                     if let person = store.data.ownPerson, !person.standingOrders.isEmpty {
                         Text("Daueraufträge").font(.agoraSection).foregroundStyle(Palette.text).padding(.top, 6)
                         VStack(spacing: 0) {
@@ -56,6 +50,7 @@ struct MemberFinanceView: View {
             }
         }
         .sheet(item: $newRequest) { kind in NewRequestSheet(kind: kind) }
+        .sheet(item: $openRequest) { request in RequestDetailSheet(request: request, canDecide: false) }
     }
 }
 
@@ -74,45 +69,6 @@ struct StandingOrderRow: View {
             Text("\(Formats.money(order.amount)) / Monat").font(.system(size: 14.5, weight: .bold)).foregroundStyle(Palette.text)
         }
         .padding(14)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-/// One own request with its state, details and (if rejected) the reason.
-struct RequestItem: View {
-    let request: FinanceRequest
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                IconTile(systemImage: request.icon, color: Palette.primary, size: 34)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(request.title).font(.system(size: 16, weight: .bold)).foregroundStyle(Palette.text)
-                    Text(Formats.dateTime(millis: request.timestamp)).font(.system(size: 12.5)).foregroundStyle(Palette.textSecondary)
-                }
-                Spacer()
-                RequestStateChip(status: request.status)
-            }
-            let chips = request.detailChips
-            if !chips.isEmpty {
-                Text(chips.joined(separator: " · "))
-                    .font(.system(size: 13.5))
-                    .foregroundStyle(Palette.text)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Palette.surfaceAlt, in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
-            }
-            if request.status == "rejected", let reason = request.rejectionReason, !reason.isEmpty {
-                Label("Grund: \(reason)", systemImage: "exclamationmark.circle")
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .foregroundStyle(Palette.danger)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Palette.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
-            }
-        }
-        .card(radius: Radius.list)
         .accessibilityElement(children: .combine)
     }
 }

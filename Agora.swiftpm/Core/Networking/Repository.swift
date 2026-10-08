@@ -102,15 +102,17 @@ final class Repository: Sendable {
 
     func profilePictureURL(_ uid: String) -> URL? { uid.isEmpty ? nil : api.absolute("/api/profile/picture/\(uid)") }
 
-    func saveNotificationSettings(uid: String, _ settings: NotificationSettings) async throws {
+    /// Saves channels and kinds like the web (the flat keys repeat the push choice for older servers and apps).
+    func saveNotificationSettings(uid: String, _ prefs: NotificationPrefs) async throws {
+        var settings = prefs.push.json
+        settings["channels"] = ["push": .bool(prefs.channels.push), "email": .bool(prefs.channels.email)]
+        settings["push"] = prefs.push.json
+        settings["email"] = prefs.email.json
         try await api.perform(.patch, "/api/db", body: [
             "path": .string("users/\(uid)"),
             "value": [
-                "notificationSettings": [
-                    "duties": .bool(settings.duties), "events": .bool(settings.events),
-                    "messages": .bool(settings.messages), "finances": .bool(settings.finances)
-                ],
-                "emailNotifications": .bool(settings.any)
+                "notificationSettings": settings,
+                "emailNotifications": .bool(prefs.channels.push || prefs.channels.email)
             ]
         ])
     }
@@ -156,11 +158,7 @@ final class Repository: Sendable {
         return try? api.decoder.decode(Person.self, from: api.encoder.encode(value))
     }
 
-    func ownRequests(uid: String) async throws -> [FinanceRequest] {
-        let collection: KeyedCollection<FinanceRequest> = try await api.get("/api/db", query: ["path": "requests", "orderByChild": "userId", "equalTo": uid])
-        return collection.items.sorted { $0.timestamp > $1.timestamp }
-    }
-
+    /// Members get only their own requests from the server (also decided ones, via their person record).
     func allRequests() async throws -> [FinanceRequest] {
         let collection: KeyedCollection<FinanceRequest> = try await api.get("/api/db", query: ["path": "requests"])
         return collection.items.sorted { $0.timestamp > $1.timestamp }
@@ -173,7 +171,13 @@ final class Repository: Sendable {
         return response.filename
     }
 
-    func receiptURL(_ fileName: String) -> URL? { api.absolute("/api/receipts/\(fileName)") }
+    /// Receipt names come from request data members write: only a plain file name, encoded, goes into the path.
+    func receiptURL(_ fileName: String) -> URL? {
+        let name = fileName.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? ""
+        guard !name.isEmpty, name != ".", name != "..",
+              let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))) else { return nil }
+        return api.absolute("/api/receipts/\(encoded)")
+    }
 
     /// Member → treasurer application; the client notifies the admins itself afterwards.
     func submitRequest(user: User, person: Person?, type: String, data: [String: JSONValue]) async throws {
@@ -201,6 +205,20 @@ final class Repository: Sendable {
 
     func transactions(page: Int, search: String) async throws -> TransactionPage {
         try await api.get("/api/transactions", query: ["page": String(page), "perPage": "50", "search": search])
+    }
+
+    /// Every booking (all pages), for the financial report.
+    func allTransactions() async throws -> [Transaction] {
+        var all: [Transaction] = []
+        var page = 1
+        var pages = 1
+        repeat {
+            let result: TransactionPage = try await api.get("/api/transactions", query: ["page": String(page), "perPage": "500"])
+            all += result.items
+            pages = max(result.totalPages, 1)
+            page += 1
+        } while page <= pages
+        return all
     }
 
     /// Optimistic-locking update of a person record, like the web app's runTransaction (3 attempts).
@@ -289,8 +307,9 @@ final class Repository: Sendable {
         switch request.type {
         case "expense":
             try await mutateCollection("expenses") { $0 + [[
+                // The requester is the issuer of the expense, like for expenses booked by hand (web beta18)
                 "id": .string(String(Int64(Self.nowId()))), "amount": .number(amount),
-                "description": .string("\(request.field("description") ?? "") (Von: \(request.personName))"),
+                "description": .string(request.field("description") ?? ""), "issuer": .string(request.personName),
                 "date": .string(date), "receipt": request.data["receipt"] ?? .null
             ]] }
         case "payment":

@@ -14,6 +14,8 @@ struct AppData: Codable, Sendable {
     var fees = FeeSettings()
     var ownPerson: Person?
     var ownRequests: [FinanceRequest] = []
+    /// Open requests of all members; only filled for those who decide on them (treasurers, owner).
+    var pendingRequests: [FinanceRequest] = []
     var events: [AgoraEvent] = []
     var dutyRequests: [DutyRequest] = []
     var threads: [MentoringThread] = []
@@ -208,9 +210,11 @@ final class AppStore {
         let old = data
         let uid = user.userId
         let wantsAi = user.accessesAi
+        let decides = user.managesFinances || user.owner
         async let fees = try? repo.feeSettings()
         async let person: Result<Person?, Error> = Self.result { try await repo.ownPeople(uid: uid).first }
-        async let requests = try? repo.ownRequests(uid: uid)
+        // Members only get their own requests from the server; treasurers all of them
+        async let requests = try? repo.allRequests()
         async let events: Result<[AgoraEvent], Error> = Self.result { try await repo.events() }
         async let duties = try? repo.myDutyRequests()
         async let threads = try? repo.threads()
@@ -223,7 +227,14 @@ final class AppStore {
         next.loaded = true
         next.fees = await fees ?? old.fees
         if case .success(let loaded) = await person { next.ownPerson = loaded }
-        next.ownRequests = await requests ?? old.ownRequests
+        if let all = await requests {
+            // Own: by author or by the own person record (deciding used to overwrite the author with the treasurer)
+            let personId = next.ownPerson?.id
+            next.ownRequests = all.filter { $0.userId == uid || (personId != nil && $0.personId == personId) }
+            next.pendingRequests = decides ? all.filter(\.isPending) : []
+        } else if !decides {
+            next.pendingRequests = []
+        }
         switch await events {
         case .success(let list):
             next.events = list

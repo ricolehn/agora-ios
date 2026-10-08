@@ -106,8 +106,9 @@ struct ChangeStatusSheet: View {
     var body: some View {
         FormSheet(title: "Status ändern", canConfirm: !status.isEmpty, busy: action.busy, error: action.error, onConfirm: save) {
             Section {
+                // Opened from the fee list: plain status names like the list itself
                 Picker("Neuer Status", selection: $status) {
-                    ForEach(MemberStatus.allCases) { Text($0.label).tag($0.rawValue) }
+                    ForEach(MemberStatus.allCases) { Text(MemberStatus.name($0.rawValue)).tag($0.rawValue) }
                 }
                 DayPicker(title: "Gültig ab", day: $date)
             } header: {

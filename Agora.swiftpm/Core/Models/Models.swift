@@ -25,17 +25,25 @@ struct AuthResponse: Decodable, Sendable {
     }
 }
 
-struct NotificationSettings: Codable, Hashable, Sendable {
+/// Which kinds of messages arrive over one channel (push or e-mail).
+struct NotificationKinds: Codable, Hashable, Sendable {
     var duties = true
     var events = true
     var messages = true
+    var requests = true
     var finances = true
+    var reports = true
 
-    init(duties: Bool = true, events: Bool = true, messages: Bool = true, finances: Bool = true) {
+    static let all = NotificationKinds()
+    static let none = NotificationKinds(duties: false, events: false, messages: false, requests: false, finances: false, reports: false)
+
+    init(duties: Bool = true, events: Bool = true, messages: Bool = true, requests: Bool = true, finances: Bool = true, reports: Bool = true) {
         self.duties = duties
         self.events = events
         self.messages = messages
+        self.requests = requests
         self.finances = finances
+        self.reports = reports
     }
 
     init(from decoder: Decoder) throws {
@@ -43,10 +51,79 @@ struct NotificationSettings: Codable, Hashable, Sendable {
         duties = c.bool("duties", true)
         events = c.bool("events", true)
         messages = c.bool("messages", true)
+        requests = c.bool("requests", true)
         finances = c.bool("finances", true)
+        reports = c.bool("reports", true)
     }
 
-    var any: Bool { duties || events || messages || finances }
+    subscript(kind: String) -> Bool {
+        get {
+            switch kind {
+            case "duties": return duties
+            case "events": return events
+            case "messages": return messages
+            case "requests": return requests
+            case "finances": return finances
+            default: return reports
+            }
+        }
+        set {
+            switch kind {
+            case "duties": duties = newValue
+            case "events": events = newValue
+            case "messages": messages = newValue
+            case "requests": requests = newValue
+            case "finances": finances = newValue
+            default: reports = newValue
+            }
+        }
+    }
+
+    var json: JSONValue {
+        ["duties": .bool(duties), "events": .bool(events), "messages": .bool(messages),
+         "requests": .bool(requests), "finances": .bool(finances), "reports": .bool(reports)]
+    }
+}
+
+/// Master switches per channel (since server v3.0.0).
+struct NotificationChannels: Codable, Hashable, Sendable {
+    var push = true
+    var email = false
+
+    init(push: Bool = true, email: Bool = false) {
+        self.push = push
+        self.email = email
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        push = c.bool("push", true)
+        email = c.bool("email", false)
+    }
+}
+
+/// Stored notification choice. The flat keys are the push choice in the format of older servers / app versions.
+struct NotificationSettings: Codable, Hashable, Sendable {
+    var flat = NotificationKinds()
+    var channels: NotificationChannels?
+    var push: NotificationKinds?
+    var email: NotificationKinds?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        // The cache writes the synthesized "flat" object, the server the plain keys
+        flat = try c.model("flat") ?? NotificationKinds(from: decoder)
+        channels = c.model("channels")
+        push = c.model("push")
+        email = c.model("email")
+    }
+}
+
+/// A user's notification choice with all defaults applied (push with everything, e-mail off) - like web and Android.
+struct NotificationPrefs: Hashable, Sendable {
+    var channels: NotificationChannels
+    var push: NotificationKinds
+    var email: NotificationKinds
 }
 
 struct User: Codable, Hashable, Sendable {
@@ -124,9 +201,16 @@ struct User: Codable, Hashable, Sendable {
     var managesRegistrationCode: Bool { canManageRegistrationCode || permissions.contains("manage_registration_code") }
     var accessesAi: Bool { canAccessAi || permissions.contains("access_ai") }
 
-    var effectiveNotifications: NotificationSettings {
-        notificationSettings ?? (emailNotifications ? NotificationSettings()
-            : NotificationSettings(duties: false, events: false, messages: false, finances: false))
+    /// Channels and kinds like the server reads them (older records: flat keys = push; no record and
+    /// emailNotifications off = nothing at all).
+    var notificationPrefs: NotificationPrefs {
+        let stored = notificationSettings
+        let legacyAllOff = stored == nil && !emailNotifications
+        return NotificationPrefs(
+            channels: stored?.channels ?? NotificationChannels(push: !legacyAllOff, email: false),
+            push: stored?.push ?? (legacyAllOff ? .none : (stored?.flat ?? .all)),
+            email: stored?.email ?? .all
+        )
     }
 
     /// Ring around the own picture like the web app: managers gold-red, approved mentors purple, others cyan-green.
@@ -207,6 +291,12 @@ enum MemberStatus: String, CaseIterable, Identifiable, Sendable {
     static func label(_ raw: String?) -> String {
         guard let raw, !raw.isEmpty else { return "–" }
         return MemberStatus(rawValue: raw)?.label ?? raw
+    }
+
+    /// Status name without its emoji (fee list, tiles, request amounts).
+    static func name(_ raw: String?) -> String {
+        let text = label(raw)
+        return String(text.drop { !$0.isLetter }).trimmingCharacters(in: .whitespaces)
     }
 }
 
@@ -367,16 +457,21 @@ struct FinanceRequest: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// Receipt file names, read like the web's parseReceipts(): a JSON list (also kept as text, the current format) or,
+/// in bookings from older versions, a single file name or a comma separated list.
 enum Receipts {
     static func parse(_ value: JSONValue?) -> [String] {
         guard let value else { return [] }
-        if let list = value.arrayValue { return list.compactMap(\.text).filter { !$0.isEmpty } }
-        guard let text = value.text, !text.isEmpty else { return [] }
-        if text.hasPrefix("["), let data = text.data(using: .utf8), let list = try? JSONDecoder().decode([String].self, from: data) {
-            return list.filter { !$0.isEmpty }
+        if let list = value.arrayValue { return list.compactMap(\.text).map(trimmed).filter { !$0.isEmpty } }
+        let text = trimmed(value.text ?? "")
+        guard !text.isEmpty else { return [] }
+        if text.hasPrefix("["), text.hasSuffix("]"), let list = try? JSONDecoder().decode([String].self, from: Data(text.utf8)) {
+            return list.map(trimmed).filter { !$0.isEmpty }
         }
-        return [text]
+        return text.split(separator: ",").map { trimmed(String($0)) }.filter { !$0.isEmpty }
     }
+
+    private static func trimmed(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 }
 
 struct Transaction: Codable, Hashable, Identifiable, Sendable {

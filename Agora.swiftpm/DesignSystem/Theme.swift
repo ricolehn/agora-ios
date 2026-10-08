@@ -107,6 +107,15 @@ enum ThemeChoice: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The same as text (e.g. a summary line).
+    var name: String {
+        switch self {
+        case .system: return String(localized: "System")
+        case .light: return String(localized: "Hell")
+        case .dark: return String(localized: "Dunkel")
+        }
+    }
+
     var scheme: ColorScheme? {
         switch self {
         case .system: return nil

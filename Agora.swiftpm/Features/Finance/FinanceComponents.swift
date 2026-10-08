@@ -56,7 +56,8 @@ struct FinanceStatusCard: View {
                         StatCell(label: "Monatsbeitrag", value: Formats.money(store.data.fees.rate(for: person.effectiveStatus)))
                         Rectangle().fill(Palette.borderLight).frame(width: 1, height: 40)
                         Button { onStatusTap?() } label: {
-                            StatCell(label: "Status", value: MemberStatus.label(person.effectiveStatus))
+                            // Plain status name: the emoji of the label made it too wide for the tile
+                            StatCell(label: "Status", value: MemberStatus.name(person.effectiveStatus))
                         }
                         .buttonStyle(.plain)
                         .disabled(onStatusTap == nil)
@@ -81,6 +82,8 @@ struct FinanceStatusCard: View {
 /// "Verlauf": payments and status changes on a line, newest first.
 struct FinanceTimeline: View {
     let person: Person
+    /// Status names without emoji (fee list of the treasurers)
+    var plainStatus = false
 
     var body: some View {
         let entries = TimelineEntry.build(for: person)
@@ -108,7 +111,7 @@ struct FinanceTimeline: View {
                                 Text("\(note.isEmpty ? String(localized: "Keine Notiz") : note) · \(Formats.shortDay(entry.date))")
                                     .font(.system(size: 13)).foregroundStyle(Palette.textSecondary)
                             case .status(let status):
-                                Text("Statusänderung: \(MemberStatus.label(status))").font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.text)
+                                Text("Statusänderung: \(plainStatus ? MemberStatus.name(status) : MemberStatus.label(status))").font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.text)
                                 Text("Gültig ab \(Formats.shortDay(entry.date))").font(.system(size: 13)).foregroundStyle(Palette.textSecondary)
                             }
                         }

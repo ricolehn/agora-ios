@@ -64,15 +64,18 @@ struct TabPage<Content: View>: View {
         GeometryReader { proxy in
             let regular = sizeClass == .regular
             let gutter = PageLayout.gutter(width: proxy.size.width, regular: regular)
-            ScrollView {
-                VStack(alignment: .leading, spacing: spacing) {
-                    TabHeader()
-                    content
+            ScrollViewReader { scroller in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: spacing) {
+                        TabHeader()
+                        content
+                    }
+                    .padding(.horizontal, gutter)
+                    .padding(.bottom, 32)
+                    .frame(maxWidth: regular ? .infinity : 800)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, gutter)
-                .padding(.bottom, 32)
-                .frame(maxWidth: regular ? .infinity : 800)
-                .frame(maxWidth: .infinity)
+                .environment(\.pageScroll, scroller)
             }
             .environment(\.pageGutter, gutter)
             .environment(\.pageContentWidth, max(0, min(proxy.size.width, regular ? .infinity : 800) - gutter * 2))
