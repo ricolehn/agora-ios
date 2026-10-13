@@ -1,4 +1,10 @@
-# Agora for iOS
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg" />
+    <img src=".github/assets/logo.svg" width="110" alt="Agora Logo" />
+  </picture>
+  <h1>Agora for iOS</h1>
+</div>
 
 Native iOS and iPadOS client for [Agora](https://github.com/ricolehn/agora), built with SwiftUI.
 It talks to the same backend as the web app (PWA) and the [Android app](https://github.com/ricolehn/agora-android),
