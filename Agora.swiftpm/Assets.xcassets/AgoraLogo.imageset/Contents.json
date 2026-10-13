@@ -1,0 +1,20 @@
+{
+  "images" : [
+    { "filename" : "AgoraLogo.png", "idiom" : "universal", "scale" : "1x" },
+    {
+      "appearances" : [ { "appearance" : "luminosity", "value" : "dark" } ],
+      "filename" : "AgoraLogoDark.png", "idiom" : "universal", "scale" : "1x"
+    },
+    { "filename" : "AgoraLogo@2x.png", "idiom" : "universal", "scale" : "2x" },
+    {
+      "appearances" : [ { "appearance" : "luminosity", "value" : "dark" } ],
+      "filename" : "AgoraLogoDark@2x.png", "idiom" : "universal", "scale" : "2x"
+    },
+    { "filename" : "AgoraLogo@3x.png", "idiom" : "universal", "scale" : "3x" },
+    {
+      "appearances" : [ { "appearance" : "luminosity", "value" : "dark" } ],
+      "filename" : "AgoraLogoDark@3x.png", "idiom" : "universal", "scale" : "3x"
+    }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

@@ -182,15 +182,12 @@ struct AppMark: View {
     var size: CGFloat = 38
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).fill(Palette.brand)
-            Image(systemName: "building.columns.fill")
-                .font(.system(size: size * 0.5, weight: .semibold))
-                .foregroundStyle(.white)
-        }
-        .frame(width: size, height: size)
-        .shadow(color: Color(hex: 0x06B6D4, opacity: 0.3), radius: 6, y: 3)
-        .accessibilityHidden(true)
+        // The Agora knot (Assets.xcassets/AgoraLogo), like the app icon and the web's default logo
+        Image("AgoraLogo")
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 
