@@ -61,7 +61,7 @@ struct ChatView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
-                    Text(thread?.partnerName ?? "").font(.system(size: 16, weight: .heavy)).foregroundStyle(Palette.text)
+                    Text(thread?.partnerName ?? "").font(.system(size: 16, weight: .bold)).foregroundStyle(Palette.text)
                     Text(thread?.iAmMentor == true ? "Suchender (anonym)" : "Dein Mentor").font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
                 }
                 .accessibilityElement(children: .combine)
@@ -149,7 +149,7 @@ struct ChatView: View {
                     .foregroundStyle(.white)
                     .frame(width: 36, height: 36)
                     .background(Palette.brand, in: Circle())
-                    .shadow(color: Color(hex: 0x06B6D4, opacity: 0.3), radius: 3, y: 2)
+                    .shadow(color: Color(hex: 0x0D9E94, opacity: 0.3), radius: 3, y: 2)
                 }
                 .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .padding(5)
@@ -223,7 +223,7 @@ struct MessageBubble: View {
                     if mine {
                         UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 18, bottomTrailingRadius: 4, topTrailingRadius: 18, style: .continuous)
                             .fill(Palette.brand)
-                            .shadow(color: Color(hex: 0x06B6D4, opacity: 0.22), radius: 3, y: 2)
+                            .shadow(color: Color(hex: 0x0D9E94, opacity: 0.22), radius: 3, y: 2)
                     } else {
                         UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 4, bottomTrailingRadius: 18, topTrailingRadius: 18, style: .continuous)
                             .fill(Palette.surface)

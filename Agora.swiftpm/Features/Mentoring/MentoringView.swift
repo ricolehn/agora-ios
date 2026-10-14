@@ -54,25 +54,37 @@ struct MentoringView: View {
         let profile = store.data.mentorProfile
         let title: LocalizedStringKey = profile.exists && profile.isPending ? "⏳ Bewerbung in Prüfung"
             : (profile.isApproved ? "Mein Mentoren-Profil" : "Als Mentor bewerben")
-        return VStack(spacing: 10) {
-            Text("Mentoring").font(.system(size: 22, weight: .heavy)).foregroundStyle(Palette.text)
+        // A calm banner with a soft teal wash (web v3.1): title and text left, the action below
+        let banner = RoundedRectangle(cornerRadius: 26, style: .continuous)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Mentoring").font(.system(size: 24, weight: .bold)).tracking(-0.6).foregroundStyle(Palette.text)
+                .accessibilityAddTraits(.isHeader)
             Text("Persönliche Begleitung, offene Ohren & anonyme Gespräche")
-                .font(.system(size: 14)).foregroundStyle(Palette.textSecondary).multilineTextAlignment(.center)
+                .font(.system(size: 15)).foregroundStyle(Palette.textSecondary)
             Button { profileSheet = true } label: {
                 Text(title)
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 26)
                     .padding(.vertical, 11)
-                    .frame(minWidth: 210)
                     .background(Palette.button, in: Capsule())
-                    .shadow(color: Color(hex: 0x06B6D4, opacity: 0.35), radius: 9, y: 4)
+                    .shadow(color: Color(hex: 0x0D9E94, opacity: 0.3), radius: 9, y: 4)
             }
             .buttonStyle(.pressable)
-            .padding(.top, 4)
+            .padding(.top, 10)
         }
-        .frame(maxWidth: .infinity)
-        .card(padding: 20)
+        .padding(.horizontal, 22)
+        .padding(.top, 22)
+        .padding(.bottom, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            banner.fill(Palette.surface)
+                .overlay(RadialGradient(colors: [Palette.primary.opacity(0.14), .clear], center: .topTrailing, startRadius: 0, endRadius: 360))
+                .overlay(RadialGradient(colors: [Palette.secondary.opacity(0.08), .clear], center: .bottomLeading, startRadius: 0, endRadius: 300))
+                .clipShape(banner)
+        }
+        .overlay(banner.strokeBorder(Palette.borderLight, lineWidth: 1))
+        .shadow(color: Palette.shadow, radius: 4, y: 1)
     }
 
     // MARK: Conversations
@@ -143,7 +155,7 @@ struct ThreadRow: View {
                 }
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(thread.partnerName).font(.system(size: 15.5, weight: unread ? .heavy : .bold)).foregroundStyle(Palette.text).lineLimit(1)
+                    Text(thread.partnerName).font(.system(size: 15.5, weight: unread ? .bold : .semibold)).foregroundStyle(Palette.text).lineLimit(1)
                     if thread.isClosed { Image(systemName: "lock.fill").font(.system(size: 11)).foregroundStyle(Palette.slate) }
                     Spacer(minLength: 6)
                     Text(Formats.chatTime(thread.lastActivity)).font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.textSecondary)

@@ -18,56 +18,13 @@ struct FinanceStatusCard: View {
         if !user.pays {
             VStack(spacing: 6) {
                 Image(systemName: "person.crop.circle").font(.system(size: 28)).foregroundStyle(Palette.textSecondary)
-                Text("Benutzerkonto").font(.system(size: 20, weight: .heavy)).foregroundStyle(Palette.text)
+                Text("Benutzerkonto").font(.system(size: 20, weight: .bold)).foregroundStyle(Palette.text)
                 Text("Aktives Benutzerkonto (Keine Beitragspflicht)").font(.system(size: 14)).foregroundStyle(Palette.textSecondary)
                     .multilineTextAlignment(.center)
             }
             .card(padding: 22)
         } else if let person {
-            let color = person.stateColor
-            VStack(spacing: 10) {
-                Text(person.statusMeta.text.isEmpty ? String(localized: "Alles in Ordnung") : person.statusMeta.text)
-                    .font(.system(size: 22, weight: .heavy))
-                    .foregroundStyle(color)
-                    .multilineTextAlignment(.center)
-                Group {
-                    if person.standingOrderCovers {
-                        Text("Dauerauftrag aktiv")
-                    } else {
-                        Text("Bezahlt bis ") + Text(Formats.paidUntilMonth(person.paidUntil) ?? String(localized: "Nie")).bold().foregroundColor(Palette.text)
-                    }
-                }
-                .font(.system(size: 15))
-                .foregroundStyle(Palette.textSecondary)
-                if person.statusMeta.isOverdue && person.overdueAmount > 0 {
-                    VStack(spacing: 4) {
-                        CapsLabel("Offener Betrag", color: Palette.danger)
-                        Text(Formats.money(person.overdueAmount)).font(.system(size: 26, weight: .heavy)).foregroundStyle(Palette.danger)
-                    }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity)
-                    .background(Palette.danger.opacity(0.1), in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: Radius.control, style: .continuous).strokeBorder(Palette.danger.opacity(0.3), lineWidth: 1))
-                    .accessibilityElement(children: .combine)
-                }
-                if showDetails {
-                    HStack(spacing: 0) {
-                        StatCell(label: "Monatsbeitrag", value: Formats.money(store.data.fees.rate(for: person.effectiveStatus)))
-                        Rectangle().fill(Palette.borderLight).frame(width: 1, height: 40)
-                        Button { onStatusTap?() } label: {
-                            // Plain status name: the emoji of the label made it too wide for the tile
-                            StatCell(label: "Status", value: MemberStatus.name(person.effectiveStatus))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(onStatusTap == nil)
-                        .accessibilityHint("Statusänderung beantragen")
-                    }
-                    .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.nested, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: Radius.nested, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1))
-                }
-            }
-            .tintedCard(color, padding: 22)
+            PersonStatusHero(person: person, rate: store.data.fees.rate(for: person.effectiveStatus), showDetails: showDetails, onStatusTap: onStatusTap)
         } else {
             Text("Kein Mitgliedseintrag gefunden. Bitte kontaktieren Sie einen Administrator.")
                 .font(.system(size: 15))
@@ -76,6 +33,101 @@ struct FinanceStatusCard: View {
                 .frame(maxWidth: .infinity)
                 .card(padding: 22)
         }
+    }
+}
+
+/// The fee state of one member (web v3.1: .user-finance-hero-card / .member-hero): a round symbol, the state in
+/// plain words, "Bezahlt bis", the open amount when overdue and - with `showDetails` - fee and status as two chips
+/// side by side. `compact`: the smaller version inside an opened card of the fee list (always shows "Bezahlt bis").
+struct PersonStatusHero: View {
+    let person: Person
+    let rate: Double
+    var showDetails = false
+    var onStatusTap: (() -> Void)?
+    var compact = false
+
+    var body: some View {
+        let color = person.stateColor
+        let meta = person.statusMeta
+        let symbol = meta.isOverdue ? "exclamationmark" : (meta.isSoonDue ? "clock" : "checkmark")
+        let shape = RoundedRectangle(cornerRadius: compact ? 20 : 26, style: .continuous)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 14) {
+                Image(systemName: symbol)
+                    .font(.system(size: compact ? 18 : 22, weight: .bold))
+                    .foregroundStyle(Color.adaptive(0xFFFFFF, 0x181817))
+                    .frame(width: compact ? 42 : 50, height: compact ? 42 : 50)
+                    .background(color, in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(meta.text.isEmpty ? String(localized: "Alles in Ordnung") : meta.text)
+                        .font(.system(size: compact ? 19 : 21, weight: .bold))
+                        .foregroundStyle(color)
+                    Group {
+                        if !compact && person.standingOrderCovers {
+                            Text("Dauerauftrag aktiv")
+                        } else {
+                            Text("Bezahlt bis ") + Text(Formats.paidUntilMonth(person.paidUntil) ?? String(localized: "Nie")).bold().foregroundColor(Palette.text)
+                        }
+                    }
+                    .font(.system(size: 14))
+                    .foregroundStyle(Palette.textSecondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            if meta.isOverdue && person.overdueAmount > 0 {
+                HStack {
+                    Text("Offener Betrag").font(.system(size: 14, weight: .semibold))
+                    Spacer()
+                    Text(Formats.money(person.overdueAmount)).font(.system(size: 19, weight: .bold))
+                }
+                .foregroundStyle(color)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(color.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .accessibilityElement(children: .combine)
+            }
+            if showDetails {
+                HStack(spacing: 8) {
+                    chip {
+                        (Text(Formats.money(rate)).bold().foregroundColor(Palette.text) + Text(" im Monat"))
+                            .font(.system(size: 14))
+                            .foregroundStyle(Palette.textSecondary)
+                            .lineLimit(1)
+                    }
+                    // Plain status name: the emoji of the label made it too wide
+                    Button { onStatusTap?() } label: {
+                        chip {
+                            Text(MemberStatus.name(person.effectiveStatus)).font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.text).lineLimit(1)
+                            if onStatusTap != nil {
+                                Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(Palette.textSecondary)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(onStatusTap == nil)
+                    .accessibilityHint(onStatusTap == nil ? "" : "Statusänderung beantragen")
+                }
+            }
+        }
+        .padding(compact ? 16 : 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            shape.fill(Palette.surface)
+                .overlay(RadialGradient(colors: [color.opacity(0.13), .clear], center: .topTrailing, startRadius: 0, endRadius: 320).clipShape(shape))
+        }
+        .overlay(shape.strokeBorder(color.opacity(0.26), lineWidth: 1))
+        .shadow(color: Palette.shadow, radius: 4, y: 1)
+    }
+
+    /// A chip of the status card: fee per month or the status (tap to request a change).
+    private func chip<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 4) { content() }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(Palette.surfaceAlt, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1))
     }
 }
 

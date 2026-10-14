@@ -147,7 +147,7 @@ struct HomeGreeting: View {
                 .tracking(0.6)
                 .foregroundStyle(Palette.textSecondary)
             Text(first.isEmpty ? "\(hello) 👋" : "\(hello), \(first) 👋")
-                .font(.system(size: 27, weight: .heavy))
+                .font(.system(size: 27, weight: .bold))
                 .tracking(-0.4)
                 .foregroundStyle(Palette.text)
                 .accessibilityAddTraits(.isHeader)
@@ -165,7 +165,7 @@ struct HomeSectionHead: View {
 
     var body: some View {
         HStack {
-            Text(title).font(.system(size: 19, weight: .heavy)).tracking(-0.2).foregroundStyle(Palette.text)
+            Text(title).font(.system(size: 19, weight: .bold)).tracking(-0.2).foregroundStyle(Palette.text)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 0)
             if let link {
@@ -193,7 +193,7 @@ struct HomePaymentLine: View {
         Button { router.select(.finances) } label: {
             HStack(spacing: 12) {
                 Image(systemName: "exclamationmark")
-                    .font(.system(size: 15, weight: .heavy))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 34, height: 34)
                     .background(color, in: Circle())
@@ -258,12 +258,12 @@ struct NextCard: View {
                 .clipped()
             .overlay(alignment: .topLeading) {
                 Text(Formats.relativeDay(start, today: today))
-                    .font(.system(size: 12, weight: .heavy))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                     .background {
-                        if isToday { Capsule().fill(Palette.brand) } else { Capsule().fill(Color(hex: 0x0F172A, opacity: 0.5)) }
+                        if isToday { Capsule().fill(Palette.brand) } else { Capsule().fill(Color(hex: 0x1A1917, opacity: 0.62)) }
                     }
                     .background(.ultraThinMaterial, in: Capsule())
                     .overlay(Capsule().strokeBorder(.white.opacity(isToday ? 0.45 : 0.3), lineWidth: 1))
@@ -279,7 +279,7 @@ struct NextCard: View {
                 .font(.system(size: 12.5, weight: .bold))
                 .foregroundStyle(color)
                 Text(event.title)
-                    .font(.system(size: 16, weight: .heavy))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Palette.text)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
@@ -305,7 +305,7 @@ struct NextCard: View {
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1))
-        .shadow(color: Color(hex: 0x0F172A, opacity: 0.1), radius: 10, y: 6)
+        .shadow(color: Color(hex: 0x30261A, opacity: 0.1), radius: 10, y: 6)
         .accessibilityElement(children: .combine)
     }
 
@@ -314,7 +314,7 @@ struct NextCard: View {
         let mesh = ZStack {
             ColorMesh(spots: [(point: UnitPoint(x: 0.2, y: 0.25), color: color.opacity(0.35)),
                               (point: UnitPoint(x: 0.85, y: 0.35), color: Color(hex: 0x6366F1, opacity: 0.22)),
-                              (point: UnitPoint(x: 0.5, y: 1), color: Color(hex: 0x10B981, opacity: 0.22))])
+                              (point: UnitPoint(x: 0.5, y: 1), color: Color(hex: 0x14A87C, opacity: 0.22))])
             Image(systemName: event.isTermin ? "clock" : "calendar")
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(color)
@@ -362,7 +362,7 @@ struct NewMessagesCard: View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 IconTile(systemImage: "bubble.left.and.bubble.right", color: Palette.violet, size: 34)
-                Text("Neue Nachrichten").font(.system(size: 16, weight: .heavy)).foregroundStyle(Palette.text)
+                Text("Neue Nachrichten").font(.system(size: 16, weight: .bold)).foregroundStyle(Palette.text)
                 CountBadge(count: threads.reduce(0) { $0 + $1.unreadCount }, color: Palette.violet)
                 Spacer(minLength: 0)
                 Button { router.select(.mentoring) } label: {
@@ -399,7 +399,7 @@ struct NewMessagesCard: View {
             Avatar(userId: thread.partnerPictureUserId, name: thread.partnerName, size: 44, anonymous: thread.iAmMentor)
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text(thread.partnerName).font(.system(size: 15, weight: .heavy)).foregroundStyle(Palette.text).lineLimit(1)
+                    Text(thread.partnerName).font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.text).lineLimit(1)
                     Spacer(minLength: 6)
                     Text(Formats.chatTime(thread.lastActivity)).font(.system(size: 12, weight: .bold)).foregroundStyle(Palette.primary)
                 }

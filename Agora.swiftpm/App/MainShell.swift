@@ -1,11 +1,9 @@
 import SwiftUI
 
-/// Tabs like the web app's bottom navigation: Start, Finanzen, Events, Mentoring and (if enabled) KI-Support.
+/// Tabs like the web app's bottom navigation (v3.1): Start, Finanzen, Events, Mentoring and Extras.
 struct MainShell: View {
     @Environment(AppStore.self) private var store
     @Environment(Router.self) private var router
-
-    private var showsAi: Bool { (store.user?.accessesAi ?? false) && store.data.aiEnabled }
 
     var body: some View {
         TabView(selection: Binding(get: { router.tab }, set: { router.select($0) })) {
@@ -27,17 +25,13 @@ struct MainShell: View {
                 .badge(store.data.unreadThreads.count)
                 .tag(AppTab.mentoring)
 
-            if showsAi {
-                stack(.ai) { AiChatView() }
-                    .tabItem { Label("KI-Support", systemImage: "bubble.left.and.text.bubble.right") }
-                    .tag(AppTab.ai)
-            }
+            // Further apps of the community (AI chat, songbook, prayer requests) behind one permanent entry
+            stack(.extras) { HubView() }
+                .tabItem { Label("Extras", systemImage: "square.grid.2x2") }
+                .tag(AppTab.extras)
         }
-        // Active tab in emerald like the web app; the content keeps the cyan accent
-        .tint(Palette.secondary)
-        .onChange(of: showsAi) { _, visible in
-            if !visible && router.tab == .ai { router.select(.home) }
-        }
+        // Active tab in the brand teal like the web app's navigation pill
+        .tint(Palette.primary)
     }
 
     private func stack<Content: View>(_ tab: AppTab, @ViewBuilder content: () -> Content) -> some View {

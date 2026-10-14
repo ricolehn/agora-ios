@@ -133,7 +133,7 @@ private struct InviteCodeSection: View {
             VStack(spacing: 6) {
                 CapsLabel("Aktueller Code")
                 Text(inviteCode ?? "–")
-                    .font(.system(size: 30, weight: .heavy, design: .monospaced))
+                    .font(.system(size: 30, weight: .bold, design: .monospaced))
                     .tracking(3)
                     .textSelection(.enabled)
             }

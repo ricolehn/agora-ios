@@ -10,7 +10,7 @@ extension FinanceRequest {
         switch type {
         case "expense": return Palette.danger
         case "status": return Color(hex: 0x6366F1)
-        case "standing_order": return Color(hex: 0x06B6D4)
+        case "standing_order": return Color(hex: 0x0D9E94)
         default: return Palette.success
         }
     }
@@ -59,7 +59,7 @@ private struct RequestsHead: View {
     var body: some View {
         HStack(spacing: 10) {
             IconTile(systemImage: "doc.text", color: Palette.warning, size: 34)
-            Text(title).font(.system(size: 16, weight: .heavy)).foregroundStyle(Palette.text)
+            Text(title).font(.system(size: 16, weight: .bold)).foregroundStyle(Palette.text)
             CountBadge(count: count, color: badge)
             Spacer(minLength: 0)
             if let onAll {
@@ -130,9 +130,9 @@ struct OpenRequestsCard: View {
             Avatar(userId: request.userId.nilIfEmpty, name: name, size: 44)
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text(name).font(.system(size: 15, weight: .heavy)).foregroundStyle(Palette.text).lineLimit(1)
+                    Text(name).font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.text).lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(request.amountText).font(.system(size: 15, weight: .heavy)).foregroundStyle(Palette.text).lineLimit(1)
+                    Text(request.amountText).font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.text).lineLimit(1)
                 }
                 DotLabel(text: request.typeLabel, color: request.color, withReceipt: !request.receipts.isEmpty)
                 Text(request.text ?? request.dateLabel).font(.system(size: 14)).foregroundStyle(Palette.textSecondary).lineLimit(1)
@@ -146,35 +146,42 @@ struct OpenRequestsCard: View {
     }
 }
 
-/// Member finances: what can be submitted, one tile per kind with a short explanation.
+/// Member finances: what can be submitted, three soft tiles side by side (web v3.1: .req-action) - a whisper of
+/// their colour, a light tinted symbol, a short title.
 struct RequestActions: View {
     let onRequest: (RequestKind) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Anfrage stellen").font(.agoraSection).foregroundStyle(Palette.text).padding(.leading, 2).padding(.top, 6)
-            VStack(spacing: 0) {
-                ForEach(Array(RequestKind.allCases.enumerated()), id: \.element) { index, kind in
-                    if index > 0 { Hairline() }
+            HStack(spacing: 10) {
+                ForEach(RequestKind.allCases, id: \.self) { kind in
                     Button { onRequest(kind) } label: {
-                        HStack(spacing: 12) {
-                            IconTile(systemImage: kind.icon, color: kind.color, size: 40)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(kind.actionTitle).font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.text)
-                                Text(kind.actionDescription).font(.system(size: 13)).foregroundStyle(Palette.textSecondary)
-                                    .multilineTextAlignment(.leading)
-                            }
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(Palette.textSecondary.opacity(0.6))
+                        VStack(spacing: 9) {
+                            Image(systemName: kind.icon)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(kind.color)
+                                .frame(width: 44, height: 44)
+                                .background(kind.color.opacity(0.14), in: Circle())
+                            Text(kind.actionTitle)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Palette.text)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 6)
                         .padding(.vertical, 14)
-                        .contentShape(Rectangle())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .background(kind.color.opacity(0.05), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(kind.color.opacity(0.16), lineWidth: 1))
+                        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     }
                     .buttonStyle(.pressable)
+                    .accessibilityHint(kind.actionDescription)
                 }
             }
-            .card(padding: 0)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -199,7 +206,7 @@ extension RequestKind {
     var actionTitle: LocalizedStringKey {
         switch self {
         case .payment: return "Zahlung melden"
-        case .expense: return "Ausgabe erstatten lassen"
+        case .expense: return "Ausgabe erstatten"
         case .status: return "Status ändern"
         }
     }
@@ -267,9 +274,9 @@ struct MyRequestsCard: View {
                 .background(request.color.opacity(0.13), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text(request.typeLabel).font(.system(size: 15, weight: .heavy)).foregroundStyle(Palette.text).lineLimit(1)
+                    Text(request.typeLabel).font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.text).lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(request.amountText).font(.system(size: 15, weight: .heavy)).foregroundStyle(Palette.text).lineLimit(1)
+                    Text(request.amountText).font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.text).lineLimit(1)
                 }
                 DotLabel(text: request.stateText + sent, color: request.stateColor, withReceipt: !request.receipts.isEmpty)
                 Text(rejected ? String(localized: "Grund: \(request.rejectionReason?.nilIfEmpty ?? "–")") : (request.text ?? request.dateLabel))
@@ -339,7 +346,7 @@ struct RequestDetailSheet: View {
     private var hero: some View {
         VStack(spacing: 4) {
             Image(systemName: request.icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(request.color)
-            Text(request.amountText).font(.system(size: 30, weight: .heavy)).foregroundStyle(Palette.text)
+            Text(request.amountText).font(.system(size: 30, weight: .bold)).foregroundStyle(Palette.text)
                 .multilineTextAlignment(.center).minimumScaleFactor(0.6)
             if !request.dateLabel.isEmpty {
                 Text(request.dateLabel).font(.system(size: 14)).foregroundStyle(Palette.textSecondary)

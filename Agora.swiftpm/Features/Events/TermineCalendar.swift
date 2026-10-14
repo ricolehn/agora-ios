@@ -50,7 +50,7 @@ struct TermineCalendar: View {
             HStack {
                 navButton("chevron.left", label: "Vorheriger Monat", enabled: month > Day.month(today)) { shift(-1) }
                 Text(Formats.monthYear(month))
-                    .font(.system(size: 17, weight: .heavy))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(Palette.text)
                     .frame(maxWidth: .infinity)
                 navButton("chevron.right", label: "Nächster Monat", enabled: true) { shift(1) }
@@ -59,7 +59,7 @@ struct TermineCalendar: View {
             HStack(spacing: 4) {
                 ForEach(weekdays, id: \.self) { name in
                     Text(name.uppercased())
-                        .font(.system(size: 11, weight: .heavy))
+                        .font(.system(size: 11, weight: .bold))
                         .tracking(0.4)
                         .foregroundStyle(Palette.textSecondary)
                         .frame(maxWidth: .infinity)
@@ -133,7 +133,7 @@ struct TermineCalendar: View {
         return Button { onDay(day) } label: {
             VStack(spacing: 3) {
                 Text("\(number)")
-                    .font(.system(size: 15, weight: categories.isEmpty && !isToday ? .semibold : .heavy))
+                    .font(.system(size: 15, weight: categories.isEmpty && !isToday ? .semibold : .bold))
                     .foregroundStyle(isSelected ? .white : (isToday ? Palette.primary : (isPast ? Palette.textSecondary : Palette.text)))
                 HStack(spacing: 3) {
                     ForEach(TerminCategory.allCases.filter { categories.contains($0) }, id: \.self) { category in

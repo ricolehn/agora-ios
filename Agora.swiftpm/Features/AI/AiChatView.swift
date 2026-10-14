@@ -55,6 +55,8 @@ final class AiChatModel {
     }
 }
 
+/// The AI chat of Extras (web v3.1): title with "Neuer Chat", a friendly start with three questions, the replies as
+/// plain text beside a small sparkle.
 struct AiChatView: View {
     @Environment(AppStore.self) private var store
     @Environment(ToastCenter.self) private var toasts
@@ -65,21 +67,13 @@ struct AiChatView: View {
     @State private var runner = ActionRunner()
     @FocusState private var focused: Bool
 
+    private var financeView: Bool { store.user?.viewsFinances == true }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "bubble.left.and.text.bubble.right").font(.system(size: 18, weight: .semibold)).foregroundStyle(Palette.primary)
-                Text("KI-Support").font(.system(size: 18, weight: .heavy)).foregroundStyle(Palette.text)
-                Spacer()
-                Button("Verlauf löschen") { model.clear() }
-                    .buttonStyle(.agoraSecondary(small: true, fullWidth: false))
-                    .disabled(model.entries.isEmpty)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 12) {
+                    LazyVStack(spacing: 16) {
                         if model.entries.isEmpty { welcome }
                         ForEach(model.entries) { entry in
                             AiBubble(entry: entry) {
@@ -100,7 +94,15 @@ struct AiChatView: View {
             inputBar
         }
         .background(Palette.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
+        // A page of Extras: the normal bar keeps back button and swipe back
+        .navigationTitle("KI-Support")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { model.clear() } label: { Label("Neuer Chat", systemImage: "square.and.pencil") }
+                    .disabled(model.entries.isEmpty)
+            }
+        }
         .alert("Antwort melden", isPresented: Binding(get: { reporting != nil }, set: { if !$0 { reporting = nil } })) {
             TextField("Grund (optional)", text: $reason)
             Button("Abbrechen", role: .cancel) { reporting = nil }
@@ -110,19 +112,50 @@ struct AiChatView: View {
         }
     }
 
+    /// A new chat: a friendly start with three questions the assistant can answer (web: .ai-chat-welcome).
     private var welcome: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "bubble.left.and.text.bubble.right")
-                .font(.system(size: 30, weight: .semibold))
+        let ideas = financeView
+            ? [String(localized: "Wer ist mit dem Beitrag im Rückstand?"), String(localized: "Was steht diese Woche an?"), String(localized: "Welche Anfragen sind noch offen?")]
+            : [String(localized: "Bis wann ist mein Beitrag bezahlt?"), String(localized: "Was steht diese Woche an?"), String(localized: "Wo bin ich als Nächstes eingeteilt?")]
+        return VStack(spacing: 0) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 26, weight: .semibold))
                 .foregroundStyle(Palette.primary)
                 .frame(width: 64, height: 64)
-                .background(LinearGradient(colors: [Palette.primary.opacity(0.15), Palette.secondary.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
-            Text("KI-Assistent bereit").font(.system(size: 18, weight: .bold)).foregroundStyle(Palette.text)
-            Text(store.user?.viewsFinances == true ? "Stelle Fragen zu deinen Mitgliedern, Finanzen oder Einstellungen."
-                 : "Stelle Fragen zur Gemeinde, Mitgliedern oder zur App-Nutzung.")
-                .font(.system(size: 15)).foregroundStyle(Palette.textSecondary).multilineTextAlignment(.center).frame(maxWidth: 290)
+                .background(Palette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .background(LinearGradient(colors: [Color(hex: 0xA78BFA, opacity: 0.2), .clear, Palette.primary.opacity(0.22)],
+                                           startPoint: .topLeading, endPoint: .bottomTrailing),
+                            in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1))
+                .shadow(color: Palette.shadow, radius: 4, y: 2)
+            Text("Wie kann ich helfen?").font(.system(size: 24, weight: .bold)).tracking(-0.6).foregroundStyle(Palette.text)
+                .multilineTextAlignment(.center)
+                .padding(.top, 14)
+            Text(financeView ? "Frag nach Mitgliedern, Finanzen, Terminen oder Diensten."
+                 : "Frag nach Terminen, Diensten, deinem Beitrag oder wie die App funktioniert.")
+                .font(.system(size: 14.5)).foregroundStyle(Palette.textSecondary).multilineTextAlignment(.center).frame(maxWidth: 340)
+                .padding(.top, 6)
+            VStack(spacing: 8) {
+                ForEach(ideas, id: \.self) { idea in
+                    Button { model.send(idea, store: store) { failed in text = failed } } label: {
+                        Text(idea)
+                            .font(.system(size: 14.5))
+                            .foregroundStyle(Palette.text)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(Palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1))
+                    }
+                    .buttonStyle(.pressable)
+                    .disabled(model.busy)
+                }
+            }
+            .frame(maxWidth: 400)
+            .padding(.top, 18)
         }
-        .padding(.top, 60)
+        .padding(.horizontal, 8)
+        .padding(.top, 48)
     }
 
     private var inputBar: some View {
@@ -183,19 +216,38 @@ struct AiBubble: View {
         if entry.role == "user" {
             HStack {
                 Spacer(minLength: 50)
+                // A quiet tinted bubble of the brand colour (web v3.1)
+                let shape = UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous)
                 Text(entry.content)
                     .font(.system(size: 15.5))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Palette.text)
                     .textSelection(.enabled)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
-                    .background(UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 18, bottomTrailingRadius: 4, topTrailingRadius: 18, style: .continuous)
-                        .fill(Palette.brand))
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 15)
+                    .background(shape.fill(Palette.primary.opacity(0.13)))
+                    .overlay(shape.stroke(Palette.primary.opacity(0.16), lineWidth: 1))
+            }
+        } else if entry.error {
+            HStack {
+                Text(entry.content)
+                    .font(.system(size: 15))
+                    .foregroundStyle(Palette.danger)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 15)
+                    .background(Palette.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                Spacer(minLength: 30)
             }
         } else {
             let split = AiText.splitThinking(entry.content)
             let thinking = [entry.reasoning.trimmingCharacters(in: .whitespacesAndNewlines), split.thinking].filter { !$0.isEmpty }.joined(separator: "\n")
-            HStack {
+            // The reply: plain text beside a small sparkle, like modern assistants
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Palette.primary)
+                    .frame(width: 28, height: 28)
+                    .background(Palette.primary.opacity(0.12), in: Circle())
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 8) {
                     if !thinking.isEmpty {
                         Button {
@@ -214,32 +266,24 @@ struct AiBubble: View {
                     }
                     if entry.streaming && split.visible.isEmpty {
                         TypingDots()
-                    } else if entry.error {
-                        Text(entry.content).font(.system(size: 15)).foregroundStyle(Palette.danger)
                     } else {
                         MarkdownView(text: split.visible, fontSize: 15.5).textSelection(.enabled)
                     }
-                    if !entry.streaming && !entry.error && !split.visible.isEmpty {
+                    if !entry.streaming && !split.visible.isEmpty {
                         Button(action: onReport) {
                             Label("Antwort melden", systemImage: "flag")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Palette.textSecondary)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 4)
-                                .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 1))
+                                .overlay(Capsule().strokeBorder(Palette.borderLight, lineWidth: 1))
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-                .background {
-                    UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 4, bottomTrailingRadius: 18, topTrailingRadius: 18, style: .continuous)
-                        .fill(entry.error ? Palette.danger.opacity(0.08) : Palette.surface)
-                        .overlay(UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 4, bottomTrailingRadius: 18, topTrailingRadius: 18, style: .continuous)
-                            .stroke(Palette.borderLight, lineWidth: 1))
-                }
-                Spacer(minLength: 30)
+                .padding(.top, 3)
+                .frame(maxWidth: 640, alignment: .leading)
+                Spacer(minLength: 0)
             }
         }
     }

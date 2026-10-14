@@ -1,7 +1,8 @@
 import SwiftUI
 
+/// The tabs of the web app's navigation (v3.1): the AI chat, the songbook and the prayer requests live in Extras.
 enum AppTab: String, Hashable, CaseIterable {
-    case home, finances, events, mentoring, ai
+    case home, finances, events, mentoring, extras
 }
 
 /// Pages pushed on a tab's navigation stack.
@@ -10,6 +11,9 @@ enum Route: Hashable {
     case eventEdit(id: String?, type: String)
     case chat(String)
     case settings
+    case ai
+    case songbook
+    case prayers
 }
 
 /// Selected tab and one navigation stack per tab, so cards anywhere can open pages or switch tabs.
@@ -62,6 +66,9 @@ extension View {
             case .eventEdit(let id, let type): EventEditView(eventId: id, initialType: type)
             case .chat(let id): ChatView(threadId: id)
             case .settings: SettingsView()
+            case .ai: AiChatView()
+            case .songbook: SongbookView()
+            case .prayers: PrayersView()
             }
         }
     }

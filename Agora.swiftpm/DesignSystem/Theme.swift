@@ -17,37 +17,48 @@ extension Color {
     static func adaptive(_ light: UInt32, _ dark: UInt32) -> Color {
         Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: dark) : UIColor(hex: light) })
     }
+
+    /// Like `adaptive`, with an opacity per appearance.
+    static func adaptive(_ light: UInt32, _ lightOpacity: CGFloat, _ dark: UInt32, _ darkOpacity: CGFloat) -> Color {
+        Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: dark, alpha: darkOpacity) : UIColor(hex: light, alpha: lightOpacity) })
+    }
 }
 
+// Palette "Stone & Lagoon" of web v3.1 ORION (assets/polish.css): warm stone neutrals and a deep lagoon teal that
+// runs into emerald. The dark theme is tuned on its own: barely warm near-black, softer off-white text, dimmed
+// accents and no coloured light.
 enum Palette {
-    static let primary = Color.adaptive(0x06B6D4, 0x22D3EE)
-    static let primaryDark = Color.adaptive(0x0E7490, 0x06B6D4)
-    static let secondary = Color(hex: 0x10B981)
-    static let background = Color.adaptive(0xE6F2FA, 0x0F172A)
-    static let surface = Color.adaptive(0xFFFFFF, 0x1E293B)
-    static let surfaceAlt = Color.adaptive(0xF8FAFC, 0x334155)
-    static let text = Color.adaptive(0x0F172A, 0xF3F4F6)
-    static let textSecondary = Color.adaptive(0x64748B, 0x9CA3AF)
-    static let border = Color.adaptive(0xCBD5E1, 0x475569)
-    static let borderLight = Color.adaptive(0xE2E8F0, 0x334155)
-    static let success = Color(hex: 0x10B981)
-    static let danger = Color(hex: 0xEF4444)
-    static let warning = Color(hex: 0xF59E0B)
-    static let amberText = Color.adaptive(0xD97706, 0xFBBF24)
+    static let primary = Color.adaptive(0x0C8D84, 0x63C0B4)
+    static let primaryDark = Color.adaptive(0x0B7D75, 0x2EA398)
+    static let secondary = Color.adaptive(0x14A87C, 0x3FAE84)
+    static let background = Color.adaptive(0xF5F4F1, 0x181817)
+    static let surface = Color.adaptive(0xFFFFFF, 0x222120)
+    static let surfaceAlt = Color.adaptive(0xF1EFEB, 0x2B2A28)
+    static let text = Color.adaptive(0x1A1917, 0xEBE8E3)
+    static let textSecondary = Color.adaptive(0x6D6861, 0xA3A09A)
+    static let border = Color.adaptive(0xD9D5CD, 0x45433F)
+    static let borderLight = Color.adaptive(0xE8E5DF, 0x343230)
+    static let success = Color.adaptive(0x0F9B6C, 0x5BB48B)
+    static let danger = Color.adaptive(0xE5484D, 0xDE6F72)
+    static let warning = Color.adaptive(0xE0900F, 0xD4A24E)
+    static let amberText = Color.adaptive(0xB86E06, 0xD4A24E)
     /// Duties, pinned highlights.
     static let indigo = Color.adaptive(0x6366F1, 0x818CF8)
     /// Messages, dates.
     static let violet = Color.adaptive(0x7C3AED, 0xA78BFA)
-    /// Appointments ("Termine"), closed and past things.
-    static let slate = Color.adaptive(0x64748B, 0x94A3B8)
-    static let pillTrack = Color.adaptive(0xEDF2F7, 0x283548)
-    static let shadow = Color.black.opacity(0.06)
+    /// Appointments ("Termine"), closed and past things: warm stone.
+    static let slate = Color.adaptive(0x78716C, 0xA8A29E)
+    static let pillTrack = Color.adaptive(0xF1EFEB, 0x2B2A28)
+    /// Shadows: warm stone in light, plain black in dark (never coloured light).
+    static let shadow = Color.adaptive(0x30261A, 0.07, 0x000000, 0.35)
 
-    /// 135° cyan → emerald (hero cards, chat bubbles, send buttons, FAB).
-    static let brand = LinearGradient(colors: [Color(hex: 0x06B6D4), Color(hex: 0x10B981)], startPoint: .topLeading, endPoint: .bottomTrailing)
-    /// 90° cyan → emerald (primary buttons).
-    static let button = LinearGradient(colors: [Color(hex: 0x06B6D4), Color(hex: 0x10B981)], startPoint: .leading, endPoint: .trailing)
-    static let danger90 = LinearGradient(colors: [Color(hex: 0xEF4444), Color(hex: 0xB91C1C)], startPoint: .leading, endPoint: .trailing)
+    /// 135° lagoon → emerald (hero cards, send buttons, FAB).
+    static let brand = LinearGradient(colors: [Color.adaptive(0x0E9F96, 0x0F8E86), Color.adaptive(0x17AD80, 0x159A72)],
+                                      startPoint: .topLeading, endPoint: .bottomTrailing)
+    /// 90° lagoon → emerald (primary buttons).
+    static let button = LinearGradient(colors: [Color.adaptive(0x0E9F96, 0x0F8E86), Color.adaptive(0x17AD80, 0x159A72)],
+                                       startPoint: .leading, endPoint: .trailing)
+    static let danger90 = LinearGradient(colors: [Color(hex: 0xE5484D), Color(hex: 0xB91C1C)], startPoint: .leading, endPoint: .trailing)
 }
 
 /// Corner radii of the web app.
@@ -63,15 +74,15 @@ enum Radius {
 
 extension Font {
     /// Page titles ("Termine & Events").
-    static let agoraPageTitle = Font.system(size: 22, weight: .heavy)
+    static let agoraPageTitle = Font.system(size: 22, weight: .bold)
     /// Section titles ("Deine Dienste").
-    static let agoraSection = Font.system(size: 18, weight: .heavy)
+    static let agoraSection = Font.system(size: 18, weight: .bold)
     /// Card titles.
-    static let agoraCardTitle = Font.system(size: 17, weight: .heavy)
+    static let agoraCardTitle = Font.system(size: 17, weight: .bold)
     static let agoraBody = Font.system(size: 15)
     static let agoraMeta = Font.system(size: 13, weight: .medium)
     /// Small caps labels ("OFFENER BETRAG").
-    static let agoraCaps = Font.system(size: 11, weight: .heavy)
+    static let agoraCaps = Font.system(size: 11, weight: .bold)
 }
 
 /// Caps label as in the web app: uppercase, letter-spaced, secondary color.

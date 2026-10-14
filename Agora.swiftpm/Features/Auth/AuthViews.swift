@@ -5,8 +5,8 @@ struct AuthBackground: View {
     var body: some View {
         ZStack {
             Palette.background
-            RadialGradient(colors: [Color(hex: 0x06B6D4, opacity: 0.15), .clear], center: .topLeading, startRadius: 0, endRadius: 420)
-            RadialGradient(colors: [Color(hex: 0x10B981, opacity: 0.15), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 420)
+            RadialGradient(colors: [Color(hex: 0x0D9E94, opacity: 0.15), .clear], center: .topLeading, startRadius: 0, endRadius: 420)
+            RadialGradient(colors: [Color(hex: 0x14A87C, opacity: 0.12), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 420)
         }
         .ignoresSafeArea()
     }
@@ -81,7 +81,7 @@ struct ServerView: View {
                     }
                     .padding(.top, 40)
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Mit deiner Gemeinde verbinden").font(.system(size: 22, weight: .heavy)).foregroundStyle(Palette.text)
+                        Text("Mit deiner Gemeinde verbinden").font(.system(size: 22, weight: .bold)).foregroundStyle(Palette.text)
                         Text("Gib die Adresse deines Agora-Servers ein – dieselbe, die du im Browser öffnest.")
                             .font(.system(size: 15)).foregroundStyle(Palette.textSecondary)
                         IconField(title: "agora.gemeinde.de", systemImage: "globe", text: $address, content: .URL, keyboard: .URL,

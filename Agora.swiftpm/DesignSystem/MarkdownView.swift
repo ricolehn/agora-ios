@@ -21,7 +21,7 @@ struct MarkdownView: View {
         switch block {
         case .heading(let level, let text):
             inline(text)
-                .font(.system(size: level == 1 ? fontSize + 5 : level == 2 ? fontSize + 3 : fontSize + 1, weight: .heavy))
+                .font(.system(size: level == 1 ? fontSize + 5 : level == 2 ? fontSize + 3 : fontSize + 1, weight: .bold))
                 .padding(.top, 2)
                 .accessibilityAddTraits(.isHeader)
         case .paragraph(let text):

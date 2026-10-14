@@ -298,7 +298,7 @@ struct SectionHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(title)
-                .font(.system(size: 13.5, weight: .heavy))
+                .font(.system(size: 13.5, weight: .bold))
                 .textCase(.uppercase)
                 .tracking(0.8)
                 .foregroundStyle(color)
@@ -412,7 +412,7 @@ struct StatCell: View {
     var body: some View {
         VStack(spacing: 4) {
             CapsLabel(label)
-            Text(value).font(.system(size: 16, weight: .heavy)).foregroundStyle(valueColor).lineLimit(1).minimumScaleFactor(0.7)
+            Text(value).font(.system(size: 16, weight: .bold)).foregroundStyle(valueColor).lineLimit(1).minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
@@ -445,7 +445,7 @@ struct GradientText: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: size, weight: .heavy))
+            .font(.system(size: size, weight: .bold))
             .lineLimit(1)
             .minimumScaleFactor(0.6)
             .foregroundStyle(Palette.brand)

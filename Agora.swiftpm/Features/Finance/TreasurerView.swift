@@ -67,13 +67,13 @@ struct TreasurerView: View {
                 .font(.system(size: 12, weight: .bold)).textCase(.uppercase).tracking(0.6)
                 .padding(.horizontal, 14).padding(.vertical, 6)
                 .background(.black.opacity(0.15), in: Capsule())
-            Text(Formats.money(model.stats.totalBalance)).font(.system(size: 40, weight: .heavy)).minimumScaleFactor(0.5).lineLimit(1)
+            Text(Formats.money(model.stats.totalBalance)).font(.system(size: 40, weight: .bold)).minimumScaleFactor(0.5).lineLimit(1)
         }
         .foregroundStyle(.white)
         .padding(.vertical, 24)
         .frame(maxWidth: .infinity)
         .background(Palette.brand, in: RoundedRectangle(cornerRadius: Radius.hero, style: .continuous))
-        .shadow(color: Color(hex: 0x06B6D4, opacity: 0.25), radius: 12, y: 6)
+        .shadow(color: Color(hex: 0x0D9E94, opacity: 0.22), radius: 12, y: 6)
         .accessibilityElement(children: .combine)
         HStack {
             Text("Historie").font(.agoraSection).foregroundStyle(Palette.text)
@@ -287,7 +287,7 @@ struct TransactionRow: View {
                     .overlay(alignment: .bottomTrailing) {
                         if transaction.type == "exp" {
                             Image(systemName: "eurosign")
-                                .font(.system(size: 9, weight: .heavy))
+                                .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 16, height: 16)
                                 .background(Palette.danger, in: Circle())
@@ -332,7 +332,7 @@ struct TransactionSheet: View {
                 Section {
                     VStack(spacing: 6) {
                         Text(Formats.signedMoney(transaction.amount, income: transaction.isIncome))
-                            .font(.system(size: 34, weight: .heavy))
+                            .font(.system(size: 34, weight: .bold))
                             .foregroundStyle(transaction.isIncome ? Palette.success : Palette.danger)
                         Text(transaction.kindLabel).font(.subheadline).foregroundStyle(Palette.textSecondary)
                         if transaction.isAuto { StatusPill(text: String(localized: "Dauerauftrag"), color: Palette.primary, systemImage: "repeat") }
@@ -402,7 +402,10 @@ struct MemberListSection: View {
     }
 }
 
-/// Expandable member: status, paid-until, open amount; inside standing orders, actions and the timeline.
+/// Member card of the fee list like web v3.1 (.person-item): picture or initials, name up to two lines, status, a quiet
+/// tinted "paid until" pill and the chevron on the far right. Tapping opens the card in place: the fee state (round
+/// symbol, state, paid until, open amount, fee and status), compact actions, standing orders as calm rows and the
+/// combined history.
 struct PersonCard: View {
     let person: Person
     let detail: Person?
@@ -410,6 +413,7 @@ struct PersonCard: View {
     let canManage: Bool
     let toggle: () -> Void
     let onChanged: () -> Void
+    @Environment(AppStore.self) private var store
     @State private var sheet: PersonSheet?
 
     enum PersonSheet: Identifiable {
@@ -429,72 +433,71 @@ struct PersonCard: View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: toggle) {
                 HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text(person.name).font(.system(size: 16, weight: .bold)).foregroundStyle(Palette.text).lineLimit(1)
-                            Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(expanded ? Palette.primary : Palette.textSecondary)
-                                .rotationEffect(.degrees(expanded ? 90 : 0))
-                        }
-                        CapsLabel(LocalizedStringKey(MemberStatus.name(person.effectiveStatus)))
+                    Avatar(userId: person.uid.isEmpty ? nil : person.uid, name: person.name, size: 42)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(person.name).font(.system(size: 15.5, weight: .semibold)).foregroundStyle(Palette.text).lineLimit(2)
+                        Text(MemberStatus.name(person.effectiveStatus)).font(.system(size: 12.5)).foregroundStyle(Palette.textSecondary).lineLimit(1)
                     }
                     Spacer(minLength: 8)
-                    VStack(alignment: .trailing, spacing: 4) {
-                        if !person.standingOrderCovers {
-                            Text(Formats.paidUntilMonth(person.paidUntil) ?? String(localized: "Nie"))
-                                .font(.system(size: 12.5, weight: .bold)).foregroundStyle(.white)
-                                .padding(.horizontal, 10).padding(.vertical, 4)
-                                .background(color, in: Capsule())
-                        }
-                        if !person.statusMeta.text.isEmpty {
-                            Text(person.statusMeta.text).font(.system(size: 12)).foregroundStyle(Palette.textSecondary).lineLimit(1)
-                        }
+                    // The tinted month already tells the state; without it (standing order) the state in words
+                    if !person.standingOrderCovers {
+                        Text(Formats.paidUntilMonth(person.paidUntil) ?? String(localized: "Nie"))
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(color)
+                            .lineLimit(1)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                            .background(color.opacity(0.14), in: Capsule())
+                    } else if !person.statusMeta.text.isEmpty {
+                        Text(person.statusMeta.text).font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
+                            .multilineTextAlignment(.trailing).lineLimit(2)
+                            .frame(maxWidth: 150, alignment: .trailing)
                     }
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(expanded ? Palette.primary : Palette.textSecondary.opacity(0.55))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
                 }
-                .padding(16)
+                .padding(.leading, 14)
+                .padding(.trailing, 12)
+                .padding(.vertical, 12)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityHint(expanded ? "Zuklappen" : "Aufklappen")
             if expanded {
-                VStack(alignment: .leading, spacing: 14) {
-                    summary(shown, color: color)
+                VStack(alignment: .leading, spacing: 12) {
+                    Hairline().padding(.horizontal, -14)
+                    PersonStatusHero(person: shown, rate: store.data.fees.rate(for: shown.effectiveStatus), showDetails: true, compact: true)
+                    if canManage {
+                        HStack(spacing: 8) {
+                            MemberAction(title: "Zahlung erfassen", systemImage: "eurosign", color: Palette.success) { sheet = .payment }
+                            MemberAction(title: "Status", systemImage: "arrow.left.arrow.right", color: Color(hex: 0x6366F1)) { sheet = .status }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
                     if !shown.standingOrders.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            CapsLabel("Daueraufträge")
-                            ForEach(shown.standingOrders) { order in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("\(Formats.money(order.amount)) / Monat").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.text)
-                                        Text([order.endDate.map { "seit \(Formats.shortDay(order.startDate)) – \(Formats.shortDay($0))" } ?? "seit \(Formats.shortDay(order.startDate))",
-                                              order.note].filter { !$0.isEmpty }.joined(separator: " · "))
-                                            .font(.system(size: 12.5)).foregroundStyle(Palette.textSecondary)
-                                    }
-                                    Spacer()
-                                    if order.isActive(on: Day.today()) { StatusPill(text: String(localized: "Aktiv"), color: Palette.success) }
-                                    if canManage {
-                                        Button("Verwalten") { sheet = .order(order) }.font(.system(size: 14, weight: .semibold))
-                                    }
-                                }
-                                .padding(12)
-                                .background(Palette.surfaceAlt, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+                        Text(shown.standingOrders.count == 1 ? "Dauerauftrag" : "Daueraufträge")
+                            .font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.text)
+                            .padding(.top, 2)
+                        VStack(spacing: 0) {
+                            ForEach(Array(shown.standingOrders.enumerated()), id: \.element.id) { index, order in
+                                if index > 0 { Hairline() }
+                                FeeStandingOrderRow(order: order, canManage: canManage) { sheet = .order(order) }
                             }
                         }
+                        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1))
                     }
-                    if canManage {
-                        Button { sheet = .payment } label: { Label("Zahlung erfassen", systemImage: "plus") }.buttonStyle(.agoraPrimary)
-                        Button { sheet = .status } label: { Label("Status", systemImage: "arrow.triangle.2.circlepath") }.buttonStyle(.agoraSecondary)
-                    }
-                    CapsLabel("Verlauf")
+                    Text("Verlauf").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.text)
                     if detail == nil { ProgressView().frame(maxWidth: .infinity) } else { FinanceTimeline(person: shown, plainStatus: true) }
                 }
-                .padding([.horizontal, .bottom], 16)
+                .padding([.horizontal, .bottom], 14)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.list, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Radius.list, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1))
-        .shadow(color: Palette.shadow, radius: 6, y: 3)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.large, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.large, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1))
+        .shadow(color: Palette.shadow, radius: 5, y: 2)
         .sheet(item: $sheet) { which in
             switch which {
             case .payment: BookPaymentSheet(person: shown, onDone: onChanged)
@@ -503,37 +506,87 @@ struct PersonCard: View {
             }
         }
     }
+}
 
-    private func summary(_ person: Person, color: Color) -> some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    CapsLabel("Status")
-                    Text(MemberStatus.name(person.effectiveStatus)).font(.system(size: 14, weight: .bold)).foregroundStyle(Palette.text)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                VStack(alignment: .leading, spacing: 4) {
-                    CapsLabel("Bezahlt bis")
-                    if person.standingOrderCovers {
-                        StatusPill(text: String(localized: "Dauerauftrag läuft"), color: Palette.success, systemImage: "repeat")
-                    } else {
-                        Text(Formats.paidUntilMonth(person.paidUntil) ?? String(localized: "Nie")).font(.system(size: 14, weight: .bold)).foregroundStyle(color)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+/// Compact action of an opened member card: a small round tinted icon beside the label (web: .member-action).
+private struct MemberAction: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 28, height: 28)
+                    .background(color.opacity(0.14), in: Circle())
+                Text(title).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(Palette.text).lineLimit(2)
             }
-            if person.statusMeta.isOverdue && person.overdueAmount > 0 {
-                HStack {
-                    Text("Offener Betrag").font(.system(size: 14, weight: .semibold))
-                    Spacer()
-                    Text(Formats.money(person.overdueAmount)).font(.system(size: 15, weight: .heavy))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(color.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(Palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(color.opacity(0.16), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.pressable)
+    }
+}
+
+/// A standing order as a calm row (web: .so-row): round icon, "50,00 € im Monat", start · end · note, state, edit.
+private struct FeeStandingOrderRow: View {
+    let order: StandingOrder
+    let canManage: Bool
+    let onManage: () -> Void
+
+    var body: some View {
+        let end = order.endDate.map { String($0.prefix(10)) } ?? ""
+        let ended = !end.isEmpty && end < Day.today()
+        let parts: [String?] = [
+            String(localized: "Start: \(Formats.shortDay(order.startDate))"),
+            end.isEmpty ? nil : String(localized: "Ende: \(Formats.shortDay(end))"),
+            ["", "Ohne Notiz", "No note"].contains(order.note) ? nil : order.note
+        ]
+        let facts = parts.compactMap { $0 }.joined(separator: " · ")
+        HStack(spacing: 12) {
+            Image(systemName: "repeat")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Palette.primary)
+                .frame(width: 34, height: 34)
+                .background(Palette.primary.opacity(0.12), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                (Text(Formats.money(order.amount)).bold().foregroundColor(Palette.text) + Text(" im Monat"))
+                    .font(.system(size: 14)).foregroundStyle(Palette.textSecondary)
+                Text(facts).font(.system(size: 12)).foregroundStyle(Palette.textSecondary).lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            Text(ended ? "Beendet" : "Aktiv")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(ended ? Palette.textSecondary : Palette.success)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 3)
+                .background(ended ? Palette.surfaceAlt : Palette.success.opacity(0.13), in: Capsule())
+            if canManage {
+                // End (also retroactively) or remove the order, like the web's edit button
+                Button(action: onManage) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Palette.textSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(Palette.surfaceAlt, in: Circle())
+                        .overlay(Circle().strokeBorder(Palette.borderLight, lineWidth: 1))
                 }
-                .foregroundStyle(Palette.danger)
-                .padding(10)
-                .background(Palette.danger.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .buttonStyle(.plain)
+                .accessibilityLabel("Verwalten")
             }
         }
-        .padding(12)
-        .background(color.opacity(0.06), in: RoundedRectangle(cornerRadius: Radius.nested, style: .continuous))
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
+        .padding(.vertical, 11)
+        .opacity(ended ? 0.6 : 1)
     }
 }

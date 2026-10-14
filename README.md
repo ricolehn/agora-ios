@@ -11,8 +11,9 @@ It talks to the same backend as the web app (PWA) and the [Android app](https://
 follows the web app's design and uses native iOS controls where people expect them – tab bar, navigation,
 forms in sheets, menus, confirmation dialogs, the photo picker and the share sheet.
 
-**Status:** `v1.0.0-beta3` – on par with Android beta3; feature complete for members, treasurers, event managers and mentoring.
-Push notifications are not available on iOS yet (see [Roadmap](#roadmap)).
+**Status:** `v1.0.0` (codename **ORION**) – on the level of the web app v3.1 ORION and the Android app 1.1.0: Extras with
+songbook and prayer requests, one plan for duty roster and order of service, the "Stone & Lagoon" look. Feature complete
+for members, treasurers, event managers and mentoring. Push notifications are not available on iOS yet (see [Roadmap](#roadmap)).
 
 ## Features
 
@@ -21,9 +22,9 @@ Push notifications are not available on iOS yet (see [Roadmap](#roadmap)).
 | **Start** | Greeting with date, overdue or soon-due membership fee (nothing while all is paid), open duty requests with *Accept* / *Decline*, open finance requests for treasurers, *Als Nächstes* (the next five appointments and events as a swipeable row), your upcoming duties, unread mentoring messages |
 | **Finances (members)** | Fee status with monthly rate, requests (payment, standing order, status change, expense with receipts), own requests with details, status and rejection reasons, standing orders, payment history |
 | **Finances (treasurers)** | Cash balance, open requests (detail sheet, approve / reject with reason), searchable and paged booking history with receipts and member avatars, **financial report as PDF** (annual, period, member or hand-picked bookings; compact / standard / detailed; preview, share, save to Files), fee list (overdue / current), member details with payment booking, standing orders (end, also retroactively, or delete) and status changes, record donations and expenses |
-| **Events** | *Termine* (appointments, multi-day events on every day; on iPad with a month calendar that jumps to the chosen day) and *Events* (cover cards, highlights, past events), search, detail page with map link, Markdown description, registration / waiting list, attendees, duty roster (answer requests, assign people or groups, add and remove tasks), create / edit / delete incl. 16:9 cover, target groups and recurring appointments |
+| **Events** | *Termine* (slim cards with the own status in the time line, multi-day events on every day; on iPad with a month calendar that jumps to the chosen day) and *Events* (cover cards, highlights, past events), search, detail page with map link, Markdown description, registration / waiting list, attendees, **plan**: duty roster and order of service in one card (timeline with start times from the durations, songs with key, tasks without a time, answer requests; editors add tasks or songs, ask people or groups, set position, duration, key and note), create / edit / delete incl. 16:9 cover, target groups and recurring appointments |
 | **Mentoring** | Conversations with unread badges (mentees stay anonymous), chat with live polling, report / block / end / reopen, find and contact mentors anonymously, mentor application and profile, application review for mentoring managers |
-| **AI support** | Streaming answers rendered as Markdown, collapsible reasoning, report an answer; only with permission and when AI is enabled on the server |
+| **Extras** | One tab for the further apps of the community: **AI support** (start with suggested questions, streaming answers as Markdown beside a sparkle, collapsible reasoning, "Neuer Chat", report an answer; only with permission and when AI is enabled on the server), **songbook** (searchable alphabetical list, song page with chords above the syllables, transposing incl. German H/B notation, chords on/off and text size, CCLI notes; editor with live preview for members with the songbook permission) and **prayer requests** (share with name or anonymously for a week, a month or three months, All / Mine, extend or remove own requests, moderators remove any) |
 | **Settings** | Sub-pages like the web: profile picture (cropped to 256×256 JPEG), registration code, notifications per channel (push / e-mail) and kind, colour scheme (system / light / dark), monthly fees (admins), password change, calendar subscription (Apple / Google Calendar), privacy policy, sign out, **account deletion** |
 
 While the app is open it listens to the server's live updates (`/api/stream`, server-sent events) and refreshes the
@@ -68,7 +69,8 @@ Agora.swiftpm
 │   └── Support/             JSONValue for untyped records, lenient decoder, date and money formats
 ├── DesignSystem/            colour tokens of the web app (light / dark), cards, buttons, pill tabs, avatars with
 │                            role rings, authenticated image loading, toasts, Markdown view
-└── Features/                Auth, Home, Finance, Events, Mentoring, AI, Settings
+└── Features/                Auth, Home, Finance, Events (incl. the plan), Mentoring, Hub (Extras), AI, Songbook,
+                             Prayers, Settings
 ```
 
 - Endpoints, payloads and write flows follow the backend in the Agora repository and are ported from the Android
@@ -81,9 +83,10 @@ Agora.swiftpm
 
 ## Look & feel
 
-The screens follow the web app's `assets/style.css`: cyan → emerald gradients, heavy headings, bordered cards,
-pill tabs, uppercase section headers, calendar leaves for events and role rings around profile pictures
-(members cyan, mentors purple, mentoring managers gold-red). The tokens live in `DesignSystem/Theme.swift`.
+The screens follow the web app v3.1 (`assets/style.css` and `assets/polish.css`, palette "Stone & Lagoon"): warm
+stone neutrals, a deep lagoon teal that runs into emerald, a dark theme tuned on its own (near-black, soft off-white
+text, no coloured light), hairline cards, pill tabs, calendar leaves for events and role rings around profile pictures
+(members teal, mentors purple, mentoring managers gold-red). The tokens live in `DesignSystem/Theme.swift`.
 
 ## Roadmap
 

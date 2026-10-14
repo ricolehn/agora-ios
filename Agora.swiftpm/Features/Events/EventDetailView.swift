@@ -50,7 +50,7 @@ struct EventDetailView: View {
                 badges(event)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(event.title)
-                        .font(.system(size: 28, weight: .heavy))
+                        .font(.system(size: 28, weight: .bold))
                         .tracking(-0.5)
                         .foregroundStyle(Palette.text)
                         .accessibilityAddTraits(.isHeader)
@@ -67,7 +67,7 @@ struct EventDetailView: View {
                     DescriptionCard(event: event)
                 }
                 if event.requiresRegistration { RegistrationCard(event: event) }
-                if event.canAccessDutyPlan { DutyPlanCard(event: event) }
+                if event.canAccessDutyPlan { PlanCard(event: event) }
                 if event.canEdit { management(event) }
             }
             .padding(.horizontal, 20)
@@ -234,7 +234,7 @@ struct DescriptionCard: View {
         let overflows = fullHeight > collapsed + 8
         VStack(alignment: .leading, spacing: 10) {
             Label(event.isTermin ? "Über diesen Termin" : "Über dieses Event", systemImage: "text.alignleft")
-                .font(.system(size: 12.5, weight: .heavy))
+                .font(.system(size: 12.5, weight: .bold))
                 .textCase(.uppercase)
                 .foregroundStyle(Palette.textSecondary)
             MarkdownView(text: event.description)

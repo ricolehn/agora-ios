@@ -12,33 +12,36 @@ struct CalendarLeaf: View {
     let day: String
     var color: Color
     var floating = false
+    /// The smaller leaf of the slim Termine cards (web v3.1).
+    var compact = false
 
     var body: some View {
         let parts = Formats.leaf(day)
         VStack(spacing: 0) {
             Text(parts.month)
-                .font(.system(size: 10.5, weight: .heavy))
+                .font(.system(size: compact ? 9.5 : 10.5, weight: .bold))
                 .tracking(0.8)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 3)
+                .padding(.vertical, compact ? 2 : 3)
                 .background(color)
             Text(parts.day)
-                .font(.system(size: 21, weight: .heavy))
+                .font(.system(size: compact ? 18 : 21, weight: .bold))
+                .tracking(compact ? -0.5 : 0)
                 .foregroundStyle(Palette.text)
                 .padding(.top, 2)
             Text(parts.weekday)
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: compact ? 10 : 11, weight: .semibold))
                 .foregroundStyle(Palette.textSecondary)
-                .padding(.bottom, 5)
+                .padding(.bottom, compact ? 4 : 5)
         }
-        .frame(width: 52)
+        .frame(width: compact ? 44 : 52)
         .background(Palette.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: compact ? 11 : 12, style: .continuous))
         .overlay {
             if !floating { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1) }
         }
-        .shadow(color: Color(hex: 0x0F172A, opacity: floating ? 0.25 : 0.08), radius: floating ? 7 : 2, y: floating ? 3 : 1)
+        .shadow(color: Color(hex: 0x30261A, opacity: floating ? 0.25 : 0.08), radius: floating ? 7 : 2, y: floating ? 3 : 1)
         .accessibilityElement()
         .accessibilityLabel(Text(Formats.longDay(day)))
     }
@@ -61,8 +64,8 @@ struct EventBadgeView: View {
     }
 }
 
-/// Card of the Termine list and the start page (`.event-card`): category stripe, calendar leaf, title, one
-/// "when" line, location, at most one badge.
+/// Slim card of the Termine list and the start page like web v3.1 (`.event-card`, polish.css "Termine"): a slim
+/// category tab, a small calendar leaf, title, one "when" line that ends with the own status, location.
 struct EventRow: View {
     @Environment(AppStore.self) private var store
     let event: AgoraEvent
@@ -75,58 +78,93 @@ struct EventRow: View {
         let shownDay = day ?? event.date
         let isToday = day != nil && day != event.date ? shownDay == today : event.isOngoing(today: today)
         let color = event.categoryColor
-        HStack(spacing: 14) {
-            CalendarLeaf(day: shownDay, color: event.isTermin && !event.isPinned ? Palette.slate : color)
-            VStack(alignment: .leading, spacing: 4) {
+        let note = store.user.flatMap { EventBadge.of(event, user: $0, showRegistered: showRegistered) }.map { StatusNote($0) }
+        HStack(spacing: 12) {
+            // The category stripe as a slim rounded tab inside the card
+            UnevenRoundedRectangle(bottomTrailingRadius: 3, topTrailingRadius: 3, style: .continuous)
+                .fill(color.opacity(event.isTermin && !event.isPinned ? 0.45 : 0.85))
+                .frame(width: 3)
+                .padding(.vertical, 12)
+            CalendarLeaf(day: shownDay, color: event.isTermin && !event.isPinned ? Palette.slate : color, compact: true)
+                .padding(.vertical, 8)
+            VStack(alignment: .leading, spacing: 2) {
                 Text(event.title)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 15.5, weight: .semibold))
+                    .tracking(-0.2)
                     .foregroundStyle(Palette.text)
                     .lineLimit(2)
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     if isToday {
                         Text("Heute")
-                            .font(.system(size: 11, weight: .heavy))
-                            .textCase(.uppercase)
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(event.isTermin ? Palette.primary : color)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background((event.isTermin ? Palette.primary : color).opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 1)
+                            .background((event.isTermin ? Palette.primary : color).opacity(0.12), in: Capsule())
                     }
                     Label {
                         Text(Formats.eventRowWhen(event)).lineLimit(1)
                     } icon: {
                         Image(systemName: event.isMultiDay ? "calendar" : "clock").opacity(0.65)
                     }
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Palette.text)
                     .labelStyle(TightLabelStyle())
+                    .layoutPriority(1)
+                    // The own status ends the time line: the time stays whole, a long duty name ends with "…"
+                    if let note {
+                        Text("·").font(.system(size: 13)).foregroundStyle(Palette.textSecondary.opacity(0.6))
+                        HStack(spacing: 3) {
+                            if let icon = note.icon { Image(systemName: icon).font(.system(size: 10, weight: .semibold)) }
+                            Text(note.text).lineLimit(1)
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(note.color)
+                    }
                 }
                 if !event.location.isEmpty {
                     Label { Text(event.location).lineLimit(1) } icon: { Image(systemName: "mappin.and.ellipse") }
-                        .font(.system(size: 13.5))
+                        .font(.system(size: 12.8))
                         .foregroundStyle(Palette.textSecondary)
                         .labelStyle(TightLabelStyle())
                 }
             }
             Spacer(minLength: 0)
-            if let user = store.user, let badge = EventBadge.of(event, user: user, showRegistered: showRegistered) {
-                EventBadgeView(badge: badge)
-            }
             Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(Palette.textSecondary.opacity(0.5))
         }
-        .padding(.vertical, 12)
-        .padding(.leading, 16)
         .padding(.trailing, 12)
         .background(Palette.surface)
-        .overlay(alignment: .leading) {
-            Rectangle().fill(color.opacity(event.isTermin && !event.isPinned ? 0.45 : 0.85)).frame(width: 4)
-        }
         .clipShape(RoundedRectangle(cornerRadius: Radius.list, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Radius.list, style: .continuous)
-            .strokeBorder(isToday ? color : Palette.borderLight, lineWidth: isToday ? 2 : 1))
-        .shadow(color: Palette.shadow, radius: 6, y: 3)
+            .strokeBorder(isToday ? Palette.primary.opacity(0.55) : Palette.borderLight, lineWidth: isToday ? 1.5 : 1))
+        .shadow(color: Palette.shadow, radius: 3, y: 1)
         .opacity(event.isPast(today: today) ? 0.55 : 1)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The own status of an event as text, colour and icon - a quiet note in the time line of a card.
+struct StatusNote {
+    let text: String
+    let color: Color
+    var icon: String?
+
+    init(_ badge: EventBadge) {
+        switch badge {
+        case .duty(let role): self.init(text: role, color: Palette.primary, icon: "wrench.and.screwdriver")
+        case .requestOpen: self.init(text: String(localized: "Anfrage offen"), color: Palette.warning)
+        case .waitlist: self.init(text: String(localized: "Warteliste"), color: Palette.warning)
+        case .registered: self.init(text: String(localized: "Angemeldet"), color: Palette.success)
+        case .full: self.init(text: String(localized: "Ausgebucht"), color: Palette.danger)
+        case .openDuties(let count):
+            self.init(text: count == 1 ? String(localized: "1 Dienst frei") : String(localized: "\(count) Dienste frei"), color: Palette.textSecondary)
+        }
+    }
+
+    init(text: String, color: Color, icon: String? = nil) {
+        self.text = text
+        self.color = color
+        self.icon = icon
     }
 }
 
@@ -158,11 +196,11 @@ struct ColorMesh: View {
     static func event(pinned: Bool) -> ColorMesh {
         pinned
             ? ColorMesh(spots: [(point: UnitPoint(x: 0.2, y: 0.25), color: Color(hex: 0x6366F1, opacity: 0.42)),
-                                (point: UnitPoint(x: 0.85, y: 0.3), color: Color(hex: 0x06B6D4, opacity: 0.32)),
+                                (point: UnitPoint(x: 0.85, y: 0.3), color: Color(hex: 0x0D9E94, opacity: 0.30)),
                                 (point: UnitPoint(x: 0.5, y: 1), color: Color(hex: 0xA855F7, opacity: 0.25))])
-            : ColorMesh(spots: [(point: UnitPoint(x: 0.18, y: 0.22), color: Color(hex: 0x06B6D4, opacity: 0.38)),
+            : ColorMesh(spots: [(point: UnitPoint(x: 0.18, y: 0.22), color: Color(hex: 0x0D9E94, opacity: 0.34)),
                                 (point: UnitPoint(x: 0.82, y: 0.28), color: Color(hex: 0x6366F1, opacity: 0.32)),
-                                (point: UnitPoint(x: 0.55, y: 1), color: Color(hex: 0x10B981, opacity: 0.28))])
+                                (point: UnitPoint(x: 0.55, y: 1), color: Color(hex: 0x14A87C, opacity: 0.26))])
     }
 }
 
@@ -193,7 +231,7 @@ struct EventCoverCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 10) {
                     Text(event.title)
-                        .font(.system(size: 18, weight: .heavy))
+                        .font(.system(size: 18, weight: .bold))
                         .tracking(-0.2)
                         .foregroundStyle(Palette.text)
                         .lineLimit(2)
@@ -234,13 +272,13 @@ struct EventCoverCard: View {
         .overlay {
             if event.isPinned {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(LinearGradient(colors: [Color(hex: 0x6366F1), Color(hex: 0x06B6D4), Color(hex: 0x10B981)],
+                    .strokeBorder(LinearGradient(colors: [Color(hex: 0x6366F1), Color(hex: 0x0D9E94), Color(hex: 0x14A87C)],
                                                  startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.5)
             } else {
                 RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Palette.borderLight, lineWidth: 1)
             }
         }
-        .shadow(color: event.isPinned ? Color(hex: 0x6366F1, opacity: 0.22) : Color(hex: 0x0F172A, opacity: 0.1), radius: 10, y: 6)
+        .shadow(color: event.isPinned ? Color(hex: 0x6366F1, opacity: 0.22) : Color(hex: 0x30261A, opacity: 0.1), radius: 10, y: 6)
         .accessibilityElement(children: .combine)
     }
 
@@ -255,11 +293,11 @@ struct EventCoverCard: View {
                     .frame(width: 56, height: 56)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.5), lineWidth: 1))
-                    .shadow(color: Color(hex: 0x0F172A, opacity: 0.2), radius: 10, y: 6)
+                    .shadow(color: Color(hex: 0x30261A, opacity: 0.2), radius: 10, y: 6)
             }
         } overlay: {
-            LinearGradient(stops: [.init(color: Color(hex: 0x0F172A, opacity: 0.28), location: 0), .init(color: .clear, location: 0.34),
-                                   .init(color: .clear, location: 0.7), .init(color: Color(hex: 0x0F172A, opacity: 0.18), location: 1)],
+            LinearGradient(stops: [.init(color: Color(hex: 0x1A1917, opacity: 0.28), location: 0), .init(color: .clear, location: 0.34),
+                                   .init(color: .clear, location: 0.7), .init(color: Color(hex: 0x1A1917, opacity: 0.18), location: 1)],
                            startPoint: .top, endPoint: .bottom)
         }
         .saturation(past ? 0.3 : 1)
@@ -269,13 +307,13 @@ struct EventCoverCard: View {
     /// Frosted "EVENT" / "GROSSEVENT" label (indigo for highlights).
     private var coverLabel: some View {
         Text(event.isPinned ? "Großevent" : "Event")
-            .font(.system(size: 11, weight: .heavy))
+            .font(.system(size: 11, weight: .bold))
             .textCase(.uppercase)
             .tracking(0.6)
             .foregroundStyle(.white)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .background(event.isPinned ? Color(hex: 0x4F46E5, opacity: 0.62) : Color(hex: 0x0F172A, opacity: 0.38), in: Capsule())
+            .background(event.isPinned ? Color(hex: 0x4F46E5, opacity: 0.62) : Color(hex: 0x1A1917, opacity: 0.38), in: Capsule())
             .background(.ultraThinMaterial, in: Capsule())
             .overlay(Capsule().strokeBorder(.white.opacity(event.isPinned ? 0.45 : 0.35), lineWidth: 1))
     }
@@ -301,7 +339,7 @@ struct EventCoverCard: View {
             if let icon { Image(systemName: icon).font(.system(size: 10, weight: .bold)) }
             Text(text).lineLimit(1)
         }
-        .font(.system(size: 11.5, weight: .heavy))
+        .font(.system(size: 11.5, weight: .bold))
         .foregroundStyle(color)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -363,7 +401,7 @@ struct DutyRequestCard: View {
                 Spacer(minLength: 0)
             }
             Text("Rückmeldung erbeten")
-                .font(.system(size: 11, weight: .heavy)).textCase(.uppercase).foregroundStyle(.white)
+                .font(.system(size: 11, weight: .bold)).textCase(.uppercase).foregroundStyle(.white)
                 .padding(.horizontal, 10).padding(.vertical, 4)
                 .background(Palette.warning, in: Capsule())
             ForEach(requests) { request in

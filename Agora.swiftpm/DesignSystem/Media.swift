@@ -133,7 +133,7 @@ struct Avatar: View {
             } else {
                 RemoteImage(url: userId.flatMap { store.repository.profilePictureURL($0) }, revision: revision) {
                     Text(Initials.of(name))
-                        .font(.system(size: size * 0.36, weight: .heavy))
+                        .font(.system(size: size * 0.36, weight: .bold))
                         .foregroundStyle(Palette.text)
                         .minimumScaleFactor(0.5)
                 }
@@ -162,7 +162,7 @@ struct Avatar: View {
 extension AvatarRingKind {
     var gradient: LinearGradient {
         switch self {
-        case .standard: return LinearGradient(colors: [Color(hex: 0x06B6D4), Color(hex: 0x10B981)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .standard: return LinearGradient(colors: [Color(hex: 0x0D9E94), Color(hex: 0x14A87C)], startPoint: .topLeading, endPoint: .bottomTrailing)
         case .mentor: return LinearGradient(colors: [Color(hex: 0xC084FC), Color(hex: 0x7C3AED)], startPoint: .topLeading, endPoint: .bottomTrailing)
         case .manager: return LinearGradient(colors: [Color(hex: 0xFACC15), Color(hex: 0xEF4444)], startPoint: .topLeading, endPoint: .bottomTrailing)
         }
@@ -170,7 +170,7 @@ extension AvatarRingKind {
 
     var glow: Color {
         switch self {
-        case .standard: return Color(hex: 0x06B6D4, opacity: 0.35)
+        case .standard: return Color(hex: 0x0D9E94, opacity: 0.3)
         case .mentor: return Color(hex: 0x7C3AED, opacity: 0.42)
         case .manager: return Color(hex: 0xEF4444, opacity: 0.38)
         }
