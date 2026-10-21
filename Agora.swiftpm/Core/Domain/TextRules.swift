@@ -89,3 +89,19 @@ enum MarkdownBlock: Hashable, Sendable {
         return blocks
     }
 }
+
+/// The church logo the server sends (`/assets/church-logo.svg`), read like Android's LogoStore.
+enum ServerLogoRules {
+    /// The server's own default logo (the Agora knot of web v3.0+): the church has not uploaded one. The app then shows
+    /// its bundled knot, which also follows the dark theme.
+    static func isDefaultLogo(_ svg: String) -> Bool {
+        svg.contains(#"viewBox="-82 -82 2884 2884""#) && svg.range(of: "#204E44", options: .caseInsensitive) != nil
+    }
+
+    /// Only the <svg> element (an XML prolog or comments before it would show up as text in HTML); nil when the answer
+    /// is no SVG, e.g. an error page.
+    static func svgElement(_ text: String) -> String? {
+        guard let start = text.range(of: "<svg") else { return nil }
+        return String(text[start.lowerBound...])
+    }
+}

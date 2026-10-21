@@ -145,10 +145,29 @@ struct RegistrationCard: View {
         }
     }
 
+    /// Guests (signed up without an account through the shared link) are marked; editors see how to reach them.
     private func attendeeRow(_ attendee: Attendee, waiting: Bool) -> some View {
         HStack(spacing: 10) {
-            Avatar(userId: attendee.userId, name: attendee.name, size: 32)
-            Text(attendee.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(waiting ? Palette.amberText : Palette.text)
+            Avatar(userId: attendee.pictureUserId, name: attendee.name, size: 32)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(attendee.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(waiting ? Palette.amberText : Palette.text)
+                        .lineLimit(1)
+                    if attendee.guest { StatusPill(text: String(localized: "Gast"), color: Palette.primary) }
+                }
+                if attendee.guest && !attendee.email.isEmpty {
+                    let contact = [attendee.email, attendee.age.map { String(localized: "Alter \($0)") }].compactMap { $0 }.joined(separator: " · ")
+                    if let mail = URL(string: "mailto:\(attendee.email)") {
+                        Link(contact, destination: mail)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Palette.textSecondary)
+                            .lineLimit(1)
+                            .accessibilityHint("E-Mail schreiben")
+                    } else {
+                        Text(contact).font(.system(size: 13)).foregroundStyle(Palette.textSecondary).lineLimit(1)
+                    }
+                }
+            }
             Spacer()
             if event.canEdit {
                 Button { removing = attendee } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.textSecondary) }
@@ -187,7 +206,7 @@ struct AvatarStack: View {
     var body: some View {
         HStack(spacing: -8) {
             ForEach(people.prefix(5)) { person in
-                Avatar(userId: person.userId, name: person.name, size: 28)
+                Avatar(userId: person.pictureUserId, name: person.name, size: 28)
                     .overlay(Circle().strokeBorder(Palette.surface, lineWidth: 2))
             }
             if people.count > 5 {

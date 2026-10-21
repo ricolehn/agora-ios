@@ -1,7 +1,8 @@
 // swift-tools-version: 5.9
 
 // Swift Playgrounds app package. Swift Playgrounds rewrites this file when the app settings are changed in the
-// app (name, icon, version); the source layout (all folders of this package) stays as it is.
+// app (name, icon, version); the source layout (all folders of this package) stays as it is. Afterwards check that
+// the privacy manifest is still listed under `resources` (CI fails when it is missing from the app).
 
 import PackageDescription
 import AppleProductTypes
@@ -36,7 +37,11 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "AppModule",
-            path: "."
+            path: ".",
+            resources: [
+                // Privacy manifest, needed at the root of the app bundle for the App Store
+                .copy("PrivacyInfo.xcprivacy")
+            ]
         )
     ]
 )

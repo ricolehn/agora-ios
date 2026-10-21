@@ -46,10 +46,26 @@ struct EventEditView: View {
                 if multiDay {
                     DayPicker(title: "Enddatum", day: $input.endDate)
                 } else {
-                    Toggle("Mit Uhrzeit", isOn: $hasTimes.animation())
+                    Toggle("Mit Uhrzeit", isOn: Binding(get: { hasTimes }, set: { on in
+                        // The pickers show what is saved: a start time as soon as times are on
+                        if on && input.startTime.isEmpty { input.startTime = "10:00" }
+                        withAnimation { hasTimes = on }
+                    }))
                     if hasTimes {
                         ClockPicker(title: "Beginn", time: $input.startTime)
-                        ClockPicker(title: "Ende", time: $input.endTime)
+                        // The end is optional (like web and Android): added on demand, removable
+                        if input.endTime.isEmpty {
+                            Button("Endzeit hinzufügen") { input.endTime = Self.twoHours(after: input.startTime) }
+                        } else {
+                            HStack {
+                                ClockPicker(title: "Ende", time: $input.endTime)
+                                Button { input.endTime = "" } label: {
+                                    Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.textSecondary)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Endzeit entfernen")
+                            }
+                        }
                     }
                 }
                 TextField("Ort", text: $input.location)
@@ -179,9 +195,16 @@ struct EventEditView: View {
             input.date = Day.today()
             input.startTime = "10:00"
             input.endTime = "12:00"
-            input.duties = store.data.eventSettings.defaultDuties
         }
         if input.endDate.isEmpty { input.endDate = Day.adding(1, to: input.date) ?? input.date }
+    }
+
+    /// "10:00" → "12:00"; at most "23:59".
+    private static func twoHours(after start: String) -> String {
+        let parts = start.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return "12:00" }
+        let minutes = min(parts[0] * 60 + parts[1] + 120, 23 * 60 + 59)
+        return String(format: "%02d:%02d", minutes / 60, minutes % 60)
     }
 
     private func upload(_ item: PhotosPickerItem?) {

@@ -1,5 +1,20 @@
 import Foundation
 
+/// JSON helpers for person records.
+enum PersonRecord {
+    static func append(_ person: JSONValue, to key: String, _ item: JSONValue) -> JSONValue {
+        var result = person
+        result[key] = .array((person[key]?.arrayValue ?? []) + [item])
+        return result
+    }
+
+    static func addingToTotal(_ person: JSONValue, _ added: Double) -> JSONValue {
+        var result = person
+        result["totalPaid"] = .number((person["totalPaid"]?.amount ?? 0) + added)
+        return result
+    }
+}
+
 /// Ending / removing standing orders, ported from the web app (saveStandingOrderEnd) via the Android client, so all
 /// clients write identical records. Days are "yyyy-MM-dd" and compared as text.
 enum StandingOrders {
@@ -81,6 +96,74 @@ enum StatusHistory {
         history.append(entry(newStatus, changeDate, nil))
         result["statusHistory"] = .array(history)
         return result
+    }
+}
+
+/// What an approved request books, ported from the web app (assets/finance.js) via the Android client, so all clients
+/// write identical records. Every booking carries the id "req_<request id>": approving the request again finds it and
+/// adds nothing, also when another app approved it first.
+enum RequestBookings {
+    static func id(_ request: FinanceRequest) -> String { "req_\(request.id)" }
+
+    private static func contains(_ list: JSONValue?, id: String) -> Bool { (list?.arrayValue ?? []).contains { $0["id"]?.text == id } }
+    private static func removing(_ id: String, from list: JSONValue?) -> JSONValue { .array((list?.arrayValue ?? []).filter { $0["id"]?.text != id }) }
+
+    /// The member's record with the approved [request] booked ([amount]: its amount, unused for a status change).
+    static func apply(_ person: JSONValue, request: FinanceRequest, amount: Double) throws -> JSONValue {
+        let id = id(request)
+        let date = request.field("date") ?? ""
+        let note = request.field("note").flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+        switch request.type {
+        case "payment":
+            if contains(person["payments"], id: id) { return person }
+            return PersonRecord.addingToTotal(PersonRecord.append(person, to: "payments", [
+                "id": .string(id), "amount": .number(amount), "date": .string(date), "description": .string(note ?? "Zahlung (Genehmigt)")
+            ]), amount)
+        case "standing_order":
+            if contains(person["standingOrders"], id: id) { return person }
+            return PersonRecord.append(person, to: "standingOrders", [
+                "id": .string(id), "amount": .number(amount), "startDate": .string(date),
+                "note": .string(note ?? "Dauerauftrag (Genehmigt)"), "lastAutoPayment": .null
+            ])
+        case "status":
+            // Same history rewrite as a treasurer status change, like the web app (applied again, it changes nothing)
+            return try StatusHistory.apply(person, newStatus: request.field("newStatus") ?? "", changeDate: date)
+        default:
+            return person
+        }
+    }
+
+    /// The expense list with the approved expense [request] (the requester is the issuer), nil when it is booked already.
+    static func addingExpense(_ expenses: [JSONValue], request: FinanceRequest, amount: Double) -> [JSONValue]? {
+        let id = id(request)
+        if contains(.array(expenses), id: id) { return nil }
+        return expenses + [[
+            "id": .string(id), "amount": .number(amount), "description": .string(request.field("description") ?? ""),
+            "issuer": .string(request.personName), "date": .string(request.field("date") ?? ""), "receipt": request.data["receipt"] ?? .null
+        ]]
+    }
+
+    /// The record without what approving [request] booked, for an approval that lost against a rejection made at the
+    /// same moment: its payment or standing order goes, a status change goes back to the record [before] it.
+    static func removingBooking(_ person: JSONValue, request: FinanceRequest, before: JSONValue?) -> JSONValue {
+        var result = person
+        if request.type == "status" {
+            guard let before else { return person }
+            result["status"] = before["status"]
+            result["statusHistory"] = before["statusHistory"]
+            return result
+        }
+        let id = id(request)
+        result["payments"] = removing(id, from: person["payments"])
+        result["standingOrders"] = removing(id, from: person["standingOrders"])
+        return result
+    }
+
+    /// The expense list without the expense the approved [request] booked, nil when it is not there.
+    static func removingExpense(_ expenses: [JSONValue], request: FinanceRequest) -> [JSONValue]? {
+        let id = id(request)
+        guard contains(.array(expenses), id: id) else { return nil }
+        return removing(id, from: .array(expenses)).arrayValue
     }
 }
 

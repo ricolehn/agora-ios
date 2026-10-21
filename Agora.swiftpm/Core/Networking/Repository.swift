@@ -27,6 +27,15 @@ enum AiChunk: Sendable {
     case reasoning(String)
 }
 
+/// How approving or rejecting a request ended.
+enum RequestDecision: Sendable {
+    case done
+    /// Approved or rejected meanwhile (another treasurer, a second device): nothing was booked.
+    case alreadyDecided
+    /// The amount of the request cannot be read: it is not booked as 0 €, the request stays open.
+    case unreadableAmount
+}
+
 /// All server calls of the app; mirrors the Android `AgoraRepository` so both clients write identical records.
 final class Repository: Sendable {
     let api: APIClient
@@ -117,6 +126,13 @@ final class Repository: Sendable {
         ])
     }
 
+    /// Reports the device's time zone, so the server times duty reminders in local time (only when it changed).
+    func syncTimeZone(_ user: User) async throws {
+        let zone = TimeZone.current.identifier
+        guard !zone.isEmpty, zone != user.timeZone, !user.userId.isEmpty else { return }
+        try await api.perform(.patch, "/api/db", body: ["path": .string("users/\(user.userId)"), "value": ["timeZone": .string(zone)]])
+    }
+
     func calendarFeed() async throws -> CalendarFeed { try await api.get("/api/user/calendar-feed") }
     func resetCalendarFeed() async throws -> CalendarFeed { try await api.send(.post, "/api/user/calendar-feed/reset") }
 
@@ -131,9 +147,12 @@ final class Repository: Sendable {
 
     func feeSettings() async throws -> FeeSettings { try await api.get("/api/db", query: ["path": "settings"]) }
 
+    /// The settings object is written as a whole: without reading it first nothing is written (it also holds the
+    /// rate of "pausiert" and the report start date).
     func saveFeeSettings(_ rates: [String: Double]) async throws {
-        var current: JSONValue = (try? await api.get("/api/db", query: ["path": "settings"], as: JSONValue.self)) ?? [:]
-        if current.objectValue == nil { current = [:] }
+        var current: JSONValue = try await api.get("/api/db", query: ["path": "settings"])
+        if current.isNull { current = [:] }
+        guard current.objectValue != nil else { throw APIError(status: 0, message: APIError.generic) }
         for (key, value) in rates { current[key] = .number(value) }
         try await api.perform(.put, "/api/db", body: ["path": "settings", "value": current])
     }
@@ -241,8 +260,8 @@ final class Repository: Sendable {
         }
     }
 
-    /// Donations and expenses are stored as whole lists: read, change, write back.
-    private func mutateCollection(_ name: String, _ change: ([JSONValue]) -> [JSONValue]) async throws {
+    /// Donations and expenses are stored as whole lists: read, change, write back ([change] nil: nothing to write).
+    private func mutateCollection(_ name: String, _ change: ([JSONValue]) -> [JSONValue]?) async throws {
         let current: JSONValue = try await api.get("/api/db", query: ["path": name])
         let list: [JSONValue]
         switch current {
@@ -250,7 +269,8 @@ final class Repository: Sendable {
         case .object(let map): list = map.keys.sorted().compactMap { map[$0] }
         default: list = []
         }
-        try await api.perform(.put, "/api/db", body: ["path": .string(name), "value": .array(change(list.filter { !$0.isNull }))])
+        guard let next = change(list.filter { !$0.isNull }) else { return }
+        try await api.perform(.put, "/api/db", body: ["path": .string(name), "value": .array(next)])
     }
 
     private static func nowId() -> Double { (Date().timeIntervalSince1970 * 1000).rounded() }
@@ -287,7 +307,7 @@ final class Repository: Sendable {
     func addDonation(amount: Double, name: String, date: String, description: String) async throws {
         try await mutateCollection("donations") { $0 + [[
             "amount": .number(amount), "name": .string(name), "date": .string(date),
-            "description": .string(description.trimmingCharacters(in: .whitespaces)), "id": .number(Self.nowId())
+            "description": .string(description.trimmingCharacters(in: .whitespacesAndNewlines)), "id": .number(Self.nowId())
         ]] }
     }
 
@@ -300,44 +320,55 @@ final class Repository: Sendable {
         ]] }
     }
 
-    func approveRequest(_ request: FinanceRequest) async throws {
-        let amount = request.amount
-        let date = request.field("date") ?? ""
-        let note = request.field("note").flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
-        switch request.type {
-        case "expense":
-            try await mutateCollection("expenses") { $0 + [[
-                // The requester is the issuer of the expense, like for expenses booked by hand (web beta18)
-                "id": .string(String(Int64(Self.nowId()))), "amount": .number(amount),
-                "description": .string(request.field("description") ?? ""), "issuer": .string(request.personName),
-                "date": .string(date), "receipt": request.data["receipt"] ?? .null
-            ]] }
-        case "payment":
-            try await mutatePerson(id: request.personId) { person in
-                PersonRecord.addingToTotal(PersonRecord.append(person, to: "payments", [
-                    "id": .string(String(Int64(Self.nowId()))), "amount": .number(amount), "date": .string(date),
-                    "description": .string(note ?? "Zahlung (Genehmigt)")
-                ]), amount)
-            }
-        case "standing_order":
-            try await mutatePerson(id: request.personId) { person in
-                PersonRecord.append(person, to: "standingOrders", [
-                    "id": .string(String(Int64(Self.nowId()))), "amount": .number(amount), "startDate": .string(date),
-                    "note": .string(note ?? "Dauerauftrag (Genehmigt)"), "lastAutoPayment": .null
-                ])
-            }
-        case "status":
-            // Same history rewrite as a treasurer status change
-            try await mutatePerson(id: request.personId) { try StatusHistory.apply($0, newStatus: request.field("newStatus") ?? "", changeDate: date) }
-        default:
-            break
-        }
-        try await patchRequest(request.id, ["status": "approved"])
+    /// Whether the request is still open on the server: the list on screen can be older than a decision made elsewhere.
+    private func isPending(_ requestId: String) async throws -> Bool {
+        guard !requestId.isEmpty else { return false }
+        let value: JSONValue = try await api.get("/api/db", query: ["path": "requests/\(requestId)"])
+        guard value.objectValue != nil else { return false }
+        return (value["status"]?.text ?? "pending") == "pending"
     }
 
-    func rejectRequest(id: String, reason: String) async throws {
+    /// Books an approved request and marks it approved, like the web app. Approving a request twice (two treasurers, a
+    /// second device, a retry) used to book the money twice: only a pending request is booked, and the booking carries
+    /// the request's id, so a request that is booked already changes nothing (`RequestBookings`).
+    func approveRequest(_ request: FinanceRequest) async throws -> RequestDecision {
+        guard try await isPending(request.id) else { return .alreadyDecided }
+        let amount = request.data["amount"]?.amount
+        if amount == nil && request.type != "status" { return .unreadableAmount }
+        var before: JSONValue?
+        if request.type == "expense" {
+            try await mutateCollection("expenses") { RequestBookings.addingExpense($0, request: request, amount: amount ?? 0) }
+        } else {
+            try await mutatePerson(id: request.personId) { person in
+                before = person
+                return try RequestBookings.apply(person, request: request, amount: amount ?? 0)
+            }
+        }
+        do {
+            try await patchRequest(request.id, ["status": "approved"])
+        } catch let error as APIError where error.status == 409 {
+            // Rejected by someone else between the check and now (the server keeps the first decision): the booking
+            // is taken back
+            if request.type == "expense" {
+                try await mutateCollection("expenses") { RequestBookings.removingExpense($0, request: request) }
+            } else {
+                let booked = before
+                try await mutatePerson(id: request.personId) { RequestBookings.removingBooking($0, request: request, before: booked) }
+            }
+            return .alreadyDecided
+        }
+        return .done
+    }
+
+    func rejectRequest(id: String, reason: String) async throws -> RequestDecision {
+        guard try await isPending(id) else { return .alreadyDecided }
         let text = reason.trimmingCharacters(in: .whitespaces)
-        try await patchRequest(id, ["status": "rejected", "rejectionReason": .string(text.isEmpty ? "Kein Grund angegeben" : text)])
+        do {
+            try await patchRequest(id, ["status": "rejected", "rejectionReason": .string(text.isEmpty ? "Kein Grund angegeben" : text)])
+        } catch let error as APIError where error.status == 409 {
+            return .alreadyDecided
+        }
+        return .done
     }
 
     private func patchRequest(_ id: String, _ value: JSONValue) async throws {
@@ -356,8 +387,14 @@ final class Repository: Sendable {
         try await api.perform(.post, "/api/events/\(eventId)/register", body: ["action": .string(register ? "register" : "cancel")])
     }
 
+    /// Members by account id, guests (server v3.2+) by "guest:<id>".
     func removeAttendee(eventId: String, userId: String) async throws {
         try await api.perform(.delete, "/api/events/\(eventId)/attendees/\(userId)")
+    }
+
+    /// The share switch: whether people without an account may open the event's link (only its editors).
+    func setEventPublic(eventId: String, _ isPublic: Bool) async throws {
+        try await api.perform(.patch, "/api/events/\(eventId)", body: ["isPublic": .bool(isPublic)])
     }
 
     func respondToDuty(id: String, accept: Bool) async throws {
@@ -546,20 +583,5 @@ final class Repository: Sendable {
         guard let object = try? JSONDecoder().decode([String: JSONValue].self, from: Data(payload.trimmingCharacters(in: .whitespaces).utf8)),
               let scope = object["scope"]?.text, !scope.isEmpty else { return "all" }
         return scope
-    }
-}
-
-/// JSON helpers for person records.
-enum PersonRecord {
-    static func append(_ person: JSONValue, to key: String, _ item: JSONValue) -> JSONValue {
-        var result = person
-        result[key] = .array((person[key]?.arrayValue ?? []) + [item])
-        return result
-    }
-
-    static func addingToTotal(_ person: JSONValue, _ added: Double) -> JSONValue {
-        var result = person
-        result["totalPaid"] = .number((person["totalPaid"]?.amount ?? 0) + added)
-        return result
     }
 }

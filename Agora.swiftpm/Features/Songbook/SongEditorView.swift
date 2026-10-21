@@ -36,7 +36,7 @@ struct SongEditorView: View {
                 Section("Lied") {
                     TextField("Titel", text: $title)
                     TextField("Autor(en)", text: $artist)
-                    TextField("Tonart, z. B. G", text: $key)
+                    TextField("Tonart", text: $key)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                         .onChange(of: key) { _, value in if value.count > 4 { key = String(value.prefix(4)) } }

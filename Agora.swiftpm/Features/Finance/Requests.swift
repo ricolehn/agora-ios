@@ -417,21 +417,27 @@ struct RequestDetailSheet: View {
     }
 
     private func approve() {
-        runner.run(toasts, success: String(localized: "Anfrage genehmigt")) {
-            try await store.repository.approveRequest(request)
-            await store.refreshAll()
-            onDecided()
-            dismiss()
-        }
+        submit(success: String(localized: "Anfrage genehmigt")) { try await store.repository.approveRequest(request) }
     }
 
     private func reject() {
         let text = reason
-        runner.run(toasts, success: String(localized: "Anfrage abgelehnt")) {
-            try await store.repository.rejectRequest(id: request.id, reason: text)
+        submit(success: String(localized: "Anfrage abgelehnt")) { try await store.repository.rejectRequest(id: request.id, reason: text) }
+    }
+
+    /// Also when it was decided meanwhile (another treasurer, a second device): the list reloads and says so.
+    private func submit(success: String, _ decision: @escaping () async throws -> RequestDecision) {
+        runner.run(toasts) {
+            let outcome = try await decision()
             await store.refreshAll()
             onDecided()
             dismiss()
+            switch outcome {
+            case .done: toasts.show(success)
+            case .alreadyDecided: toasts.show(String(localized: "Diese Anfrage wurde bereits entschieden."), error: true)
+            case .unreadableAmount:
+                toasts.show(String(localized: "Der Betrag dieser Anfrage ist nicht lesbar, deshalb wurde nichts gebucht. Bitte lehne sie ab."), error: true)
+            }
         }
     }
 }

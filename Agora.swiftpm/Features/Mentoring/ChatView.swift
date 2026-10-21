@@ -5,6 +5,7 @@ struct ChatView: View {
     let threadId: String
     @Environment(AppStore.self) private var store
     @Environment(ToastCenter.self) private var toasts
+    @Environment(\.scenePhase) private var scenePhase
     @State private var messages: [ChatMessage] = []
     @State private var loaded = false
     @State private var text = ""
@@ -67,22 +68,27 @@ struct ChatView: View {
                 .accessibilityElement(children: .combine)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button { reportReason = ""; reporting = true } label: { Label("Gespräch melden", systemImage: "flag") }
-                    if thread?.blocked != true {
-                        Button(role: .destructive) { confirmBlock = true } label: { Label("Blockieren", systemImage: "nosign") }
+                // Only once the conversation is known (like Android): no block or end for a thread that is not loaded
+                if let thread {
+                    Menu {
+                        Button { reportReason = ""; reporting = true } label: { Label("Gespräch melden", systemImage: "flag") }
+                        if !thread.blocked {
+                            Button(role: .destructive) { confirmBlock = true } label: { Label("Blockieren", systemImage: "nosign") }
+                        }
+                        if !thread.isClosed {
+                            Button(role: .destructive) { confirmEnd = true } label: { Label("Gespräch beenden", systemImage: "xmark.circle") }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
-                    if thread?.isClosed != true {
-                        Button(role: .destructive) { confirmEnd = true } label: { Label("Gespräch beenden", systemImage: "xmark.circle") }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+                    .accessibilityLabel("Optionen")
                 }
-                .accessibilityLabel("Optionen")
             }
         }
-        .task(id: threadId) {
-            // Poll while visible; opening the chat marks it read, so the badges are refreshed too
+        .task(id: "\(threadId)|\(scenePhase == .active)") {
+            // Poll while visible and the app is in the foreground (every poll marks the messages read); opening the chat
+            // marks it read, so the badges are refreshed too
+            guard scenePhase == .active else { return }
             var lastCount = -1
             while !Task.isCancelled {
                 if let list = try? await store.repository.messages(threadId: threadId) {
@@ -183,7 +189,7 @@ struct ChatView: View {
     private func report() {
         let partner = messages.filter { !$0.isMine }.suffix(10).map(\.text)
         let content = partner.isEmpty ? "(keine Nachrichten)" : partner.joined(separator: "\n---\n")
-        let reason = reportReason
+        let reason = reportReason.trimmingCharacters(in: .whitespacesAndNewlines)
         runner.run(toasts, success: String(localized: "Gemeldet – danke!")) {
             try await store.repository.report(type: "chat", content: content, reason: reason, threadId: threadId)
         }

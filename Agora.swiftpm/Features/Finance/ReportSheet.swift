@@ -1,7 +1,6 @@
 import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
-import WebKit
 
 /// Financial report (like the web and Android): kind of report as four cards, period / member / bookings, level of
 /// detail; the preview is the real first page of the PDF, which can be shared or saved to Files.
@@ -511,70 +510,14 @@ struct PDFFile: FileDocument {
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
 }
 
-/// The church logo of the server (its SVG drawn offscreen), else the app's own mark.
+/// The church logo of the server (its SVG drawn offscreen, light for the white page), else the app's own mark.
 @MainActor
 enum ReportLogo {
     static func image(_ store: AppStore) async -> UIImage? {
-        if let svg = await LogoCache.shared.svg(store), let image = await SVGSnapshot().render(svg, size: 160) { return image }
-        let renderer = ImageRenderer(content: AppMark(size: 80))
+        await LogoStore.shared.refresh(store.api)
+        if let svg = LogoStore.shared.logo(store.baseURL).svg, let image = await SVGSnapshot().render(svg, size: 160, style: .light) { return image }
+        let renderer = ImageRenderer(content: AppMark(size: 80).environment(\.colorScheme, .light))
         renderer.scale = 2
         return renderer.uiImage
-    }
-}
-
-/// Draws an SVG in an offscreen web view and takes a picture of it.
-@MainActor
-private final class SVGSnapshot: NSObject, WKNavigationDelegate {
-    private var continuation: CheckedContinuation<Bool, Never>?
-
-    func render(_ svg: String, size: CGFloat) async -> UIImage? {
-        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: size, height: size))
-        view.isOpaque = false
-        view.backgroundColor = .clear
-        view.scrollView.backgroundColor = .clear
-        view.navigationDelegate = self
-        // A web view outside a window often snapshots blank: add it invisibly while it draws
-        let window = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first
-        view.alpha = 0.01
-        view.isUserInteractionEnabled = false
-        window?.addSubview(view)
-        defer { view.removeFromSuperview() }
-        let html = """
-        <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-        <style>html,body{margin:0;padding:0;width:100%;height:100%;background:transparent;overflow:hidden}
-        svg{display:block;width:100%;height:100%}</style></head><body>
-        """ + svg + "</body></html>"
-        let loaded = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            self.continuation = continuation
-            view.loadHTMLString(html, baseURL: nil)
-            // Give up after a few seconds
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
-                self.finish(false)
-            }
-        }
-        guard loaded else { return nil }
-        try? await Task.sleep(nanoseconds: 150_000_000)
-        let config = WKSnapshotConfiguration()
-        config.rect = view.bounds
-        config.afterScreenUpdates = true
-        return try? await view.takeSnapshot(configuration: config)
-    }
-
-    private func finish(_ ok: Bool) {
-        continuation?.resume(returning: ok)
-        continuation = nil
-    }
-
-    nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        Task { @MainActor in self.finish(true) }
-    }
-
-    nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        Task { @MainActor in self.finish(false) }
-    }
-
-    nonisolated func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        Task { @MainActor in self.finish(false) }
     }
 }

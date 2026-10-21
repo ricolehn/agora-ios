@@ -152,6 +152,8 @@ struct User: Codable, Hashable, Sendable {
     var canManageEvents = false
     var mentorStatus: String?
     var isApprovedMentor = false
+    /// Time zone the server times duty reminders in (reported by the apps, see `Repository.syncTimeZone`).
+    var timeZone = ""
 
     init() {}
 
@@ -182,6 +184,7 @@ struct User: Codable, Hashable, Sendable {
         canManageEvents = c.bool("canManageEvents")
         mentorStatus = c.optionalString("mentorStatus")
         isApprovedMentor = c.bool("isApprovedMentor") || mentorStatus == "approved"
+        timeZone = c.string("timeZone")
     }
 
     var userId: String { uid.isEmpty ? id : uid }
@@ -287,6 +290,9 @@ enum MemberStatus: String, CaseIterable, Identifiable, Sendable {
 
     /// Statuses with a fee in the settings.
     static let paying: [MemberStatus] = [.vollverdiener, .geringverdiener, .keinverdiener]
+
+    /// [raw] if it is one of the four statuses, else "vollverdiener" (preselection of the status pickers, like Android).
+    static func known(_ raw: String?) -> String { MemberStatus(rawValue: raw ?? "")?.rawValue ?? MemberStatus.vollverdiener.rawValue }
 
     static func label(_ raw: String?) -> String {
         guard let raw, !raw.isEmpty else { return "–" }
@@ -643,6 +649,9 @@ struct AgoraEvent: Codable, Hashable, Identifiable, Sendable {
     var isFull = false
     var canEdit = false
     var canAccessDutyPlan = false
+    /// Share switch (server v3.2+, nil on older ones): people without an account open the link with `publicToken`.
+    var isPublic: Bool?
+    var publicToken = ""
 
     init() {}
 
@@ -675,6 +684,8 @@ struct AgoraEvent: Codable, Hashable, Identifiable, Sendable {
         isFull = c.bool("isFull")
         canEdit = c.bool("canEdit")
         canAccessDutyPlan = c.bool("canAccessDutyPlan")
+        isPublic = c.raw("isPublic")?.boolValue
+        publicToken = c.string("publicToken")
     }
 
     var isTermin: Bool { eventType == "termin" }
@@ -688,7 +699,7 @@ struct AgoraEvent: Codable, Hashable, Identifiable, Sendable {
     /// Duty the user holds personally (agreed).
     func myConfirmedDuty(_ user: User) -> Duty? { duties.first { $0.assignedUser == user.userId && $0.isConfirmed } }
     /// Duty the user holds through one of their groups.
-    func myGroupDuty(_ user: User) -> Duty? { duties.first { user.groups.contains($0.assignedGroup) && $0.status == "assigned" } }
+    func myGroupDuty(_ user: User) -> Duty? { duties.first { !$0.assignedGroup.isEmpty && user.groups.contains($0.assignedGroup) && $0.status == "assigned" } }
     /// Duty the user was asked for and has not answered yet.
     func myOpenRequest(_ user: User) -> Duty? { duties.first { $0.requestedUser == user.userId && $0.isRequested } }
     func hasMyDuty(_ user: User) -> Bool { myConfirmedDuty(user) != nil || myGroupDuty(user) != nil || myOpenRequest(user) != nil }
@@ -732,6 +743,10 @@ struct Attendee: Decodable, Hashable, Identifiable, Sendable {
     var userId = ""
     var name = ""
     var status = ""
+    /// Signed up without an account through the shared link (server v3.2+); e-mail and age only reach the editors.
+    var guest = false
+    var email = ""
+    var age: Int?
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
@@ -739,7 +754,13 @@ struct Attendee: Decodable, Hashable, Identifiable, Sendable {
         userId = c.string("userId")
         name = c.string("name")
         status = c.string("status")
+        guest = c.bool("guest")
+        email = c.string("email")
+        age = c.raw("age") == nil ? nil : c.int("age")
     }
+
+    /// Account whose profile picture to show; guests have none.
+    var pictureUserId: String? { guest || userId.isEmpty ? nil : userId }
 }
 
 struct Attendees: Decodable, Sendable {

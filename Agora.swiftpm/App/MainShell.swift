@@ -149,21 +149,29 @@ struct TabHeader: View {
 /// Floating "+" of the web app (events, treasurer finances), above the tab bar.
 struct FloatingAddButton<MenuContent: View>: View {
     var accessibility: LocalizedStringKey = "Erstellen"
+    /// With a single choice the tap runs it directly instead of opening a menu (like Android).
+    var action: (() -> Void)?
     @ViewBuilder var menu: MenuContent
 
     var body: some View {
-        Menu {
-            menu
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 54, height: 54)
-                .background(Palette.brand, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: .black.opacity(0.25), radius: 10, y: 5)
+        Group {
+            if let action {
+                Button(action: action) { plus }
+            } else {
+                Menu { menu } label: { plus }
+            }
         }
         .accessibilityLabel(accessibility)
         .padding(.trailing, 18)
         .padding(.bottom, 16)
+    }
+
+    private var plus: some View {
+        Image(systemName: "plus")
+            .font(.system(size: 24, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 54, height: 54)
+            .background(Palette.brand, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.25), radius: 10, y: 5)
     }
 }

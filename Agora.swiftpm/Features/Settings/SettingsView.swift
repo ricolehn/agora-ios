@@ -241,7 +241,7 @@ private struct NotificationKindInfo: Identifiable {
     var id: String { key }
 
     static let all: [NotificationKindInfo] = [
-        .init(key: "duties", title: "Dienstanfragen", subtitle: "Anfragen für Dienste, Antworten darauf und Dienste deiner Gruppen",
+        .init(key: "duties", title: "Dienstanfragen", subtitle: "Anfragen für Dienste, Antworten darauf, Dienste deiner Gruppen und eine Erinnerung 3 Stunden vor deinem Dienst",
               systemImage: "calendar.badge.checkmark", color: Color(hex: 0x6366F1)),
         .init(key: "events", title: "Neue Events & Termine", subtitle: "Neue Veranstaltungen und Termine der Gemeinde",
               systemImage: "calendar", color: Color(hex: 0x0891B2)),
@@ -465,21 +465,27 @@ private struct FeeSettingsPage: View {
     @State private var fees: [String: String] = [:]
 
     var body: some View {
+        let rates = typedRates
         List {
             Section {
                 ForEach(MemberStatus.paying) { status in
+                    let text = fees[status.rawValue] ?? ""
                     LabeledContent(MemberStatus.name(status.rawValue)) {
                         HStack(spacing: 4) {
-                            TextField("0,00", text: Binding(get: { fees[status.rawValue] ?? "" }, set: { fees[status.rawValue] = $0 }))
+                            TextField("0,00", text: Binding(get: { fees[status.rawValue] ?? "" }, set: { fees[status.rawValue] = Amount.typeable($0) }))
                                 .keyboardType(.decimalPad)
                                 .multilineTextAlignment(.trailing)
+                                .foregroundStyle(Amount.isUnclear(text) ? Palette.danger : Palette.text)
                                 .frame(maxWidth: 100)
                             Text("€").foregroundStyle(Palette.textSecondary)
                         }
                     }
                 }
             } footer: {
-                Text("Monatlicher Beitrag je Mitgliedsstatus.")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Monatlicher Beitrag je Mitgliedsstatus.")
+                    if rates == nil { AmountHint() }
+                }
             }
             Section {
                 Button(action: saveFees) {
@@ -489,7 +495,7 @@ private struct FeeSettingsPage: View {
                         Spacer()
                     }
                 }
-                .disabled(runner.busy)
+                .disabled(runner.busy || rates == nil)
             }
         }
         .settingsPage(regular: sizeClass == .regular)
@@ -497,20 +503,30 @@ private struct FeeSettingsPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             guard fees.isEmpty else { return }
+            // Only rates the server has: an empty field keeps its (missing) rate instead of writing 0
             for status in MemberStatus.paying {
-                fees[status.rawValue] = SettingsView.amountText(store.data.fees.rate(for: status.rawValue))
+                if let rate = store.data.fees.rates[status.rawValue] { fees[status.rawValue] = SettingsView.amountText(rate) }
             }
         }
     }
 
-    private func saveFees() {
+    /// The rates typed in, read like the web app: an empty field keeps its rate, nil while one is unclear ("1.500" is
+    /// not saved as 1,50 €) or negative.
+    private var typedRates: [String: Double]? {
         var rates: [String: Double] = [:]
         for status in MemberStatus.paying {
-            guard let text = fees[status.rawValue], let value = Amount.parse(text), value >= 0 else {
-                toasts.show(String(localized: "Ungültiger Betrag."), error: true)
-                return
-            }
+            let text = fees[status.rawValue] ?? ""
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
+            guard let value = Amount.typed(text), value >= 0 else { return nil }
             rates[status.rawValue] = value
+        }
+        return rates
+    }
+
+    private func saveFees() {
+        guard let rates = typedRates else {
+            toasts.show(String(localized: "Ungültiger Betrag."), error: true)
+            return
         }
         runner.run(toasts, success: String(localized: "Gespeichert")) {
             try await store.repository.saveFeeSettings(rates)
@@ -624,7 +640,8 @@ struct DeleteAccountSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Löscht deinen Zugang und deine persönlichen Daten: Profil, Profilbild, Anmeldungen, Dienste und Mentoring-Gespräche. Gebuchte Zahlungen bleiben für die Kassenführung erhalten. Das kann nicht rückgängig gemacht werden.")
+                    // What the server deletes (agora: ACCOUNT_DELETION.md, backend/accountDeletion.js)
+                    Text("Löscht deinen Zugang und deine persönlichen Daten: Profil, Profilbild, Anmeldungen, Mentoring-Gespräche, Gebetsanliegen (auch anonyme) und Finanzanfragen; deine Dienste werden wieder frei. Gebuchte Zahlungen bleiben aus Gründen der Buchhaltung beim Verein. Das kann nicht rückgängig gemacht werden.")
                         .font(.subheadline)
                 }
                 Section("Passwort zur Bestätigung") {

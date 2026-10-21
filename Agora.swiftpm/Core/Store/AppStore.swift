@@ -52,7 +52,8 @@ final class AppStore {
     private let cache: DataCache?
     @ObservationIgnored private var liveTask: Task<Void, Never>?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
-    @ObservationIgnored private var refreshQueued = false
+    /// One more load after the running one, shared by everyone who asks while it runs.
+    @ObservationIgnored private var queuedRefresh: Task<Void, Never>?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var restoreStarted = false
     /// Cleans up UI-side caches (pictures) of the signed-out account.
@@ -94,20 +95,27 @@ final class AppStore {
         api.token = token
         if let cached = cache?.load(baseURL: saved.baseURL, userId: user.userId) { data = cached }
         auth = .loggedIn(user)
+        startLiveUpdates()
         // Session check and data refresh side by side
         Task { await refreshAll() }
         Task {
             if let fresh = try? await repository.me() {
                 session.updateUser(fresh)
                 if case .loggedIn = auth { auth = .loggedIn(fresh) }
+                await didLogIn(fresh)
             }
         }
+    }
+
+    /// Once per session with the server's view of the account (like Android's onLoggedIn).
+    private func didLogIn(_ user: User) async {
+        try? await repository.syncTimeZone(user)
     }
 
     func connect(_ input: String) async throws {
         let url = try Self.normalize(input)
         let status = try await repository.status(baseURL: url)
-        if status.setupMode { throw APIError(status: 503, message: "Dieser Server ist noch nicht eingerichtet. Bitte schließe die Einrichtung zuerst im Browser ab.") }
+        if status.setupMode { throw APIError(status: 503, message: Self.setupRequired) }
         session.setBaseURL(url)
         if let name = await repository.appName() {
             appName = name
@@ -115,6 +123,8 @@ final class AppStore {
         }
         auth = .needsLogin(baseURL: url)
     }
+
+    nonisolated static let setupRequired = "Dieser Server ist noch nicht eingerichtet. Bitte schließe die Einrichtung zuerst im Browser ab."
 
     /// "gemeinde.de/" → "https://gemeinde.de"; plain http only for local test servers.
     static func normalize(_ input: String) throws -> String {
@@ -124,11 +134,20 @@ final class AppStore {
         guard let components = URLComponents(string: url), let host = components.host, !host.isEmpty else {
             throw APIError(status: 0, message: "Ungültige Server-Adresse")
         }
-        if components.scheme == "http", !["localhost", "127.0.0.1"].contains(host) {
+        if components.scheme == "http", !allowsPlainHTTP(host) {
             throw APIError(status: 426, message: "Der Server muss über HTTPS erreichbar sein.")
         }
         guard components.scheme == "https" || components.scheme == "http" else { throw APIError(status: 0, message: "Ungültige Server-Adresse") }
         return url
+    }
+
+    /// Plain http only to a test server on this Mac (simulator), and only in debug builds (like Android).
+    private static func allowsPlainHTTP(_ host: String) -> Bool {
+        #if DEBUG
+        return ["localhost", "127.0.0.1"].contains(host)
+        #else
+        return false
+        #endif
     }
 
     func changeServer() { auth = .needsServer }
@@ -152,11 +171,17 @@ final class AppStore {
         }
         data = AppData()
         auth = .loggedIn(user)
+        // The app is in the foreground: live updates right away, not only after the next return from the background
+        startLiveUpdates()
         Task { await refreshAll() }
+        Task { await didLogIn(user) }
     }
 
     func logout(remote: Bool = true) async {
         stopLiveUpdates()
+        // A save that is still waiting must not write this account's data back after the cache is cleared
+        saveTask?.cancel()
+        saveTask = nil
         if remote { await repository.logout() }
         api.token = nil
         api.clearHTTPCache()
@@ -175,31 +200,32 @@ final class AppStore {
 
     // MARK: Data
 
-    /// Loads all member data in parallel; a failing call keeps its previous value.
+    /// Loads all member data in parallel; a failing call keeps its previous value. Callers get data read after their
+    /// call: while a load runs (it may have read the server before the caller's change), one more load follows it and
+    /// serves everyone who asked meanwhile (like Android's refresh lock).
     func refreshAll(showIndicator: Bool = false) async {
         if let running = refreshTask {
-            await running.value
+            let next = queuedRefresh ?? Task { [weak self] in
+                await running.value
+                guard let self else { return }
+                self.queuedRefresh = nil
+                await self.refreshAll(showIndicator: showIndicator)
+            }
+            queuedRefresh = next
+            await next.value
             return
         }
-        let task = Task { await loadAll(showIndicator: showIndicator) }
+        let task = Task { [weak self] in
+            await self?.loadAll(showIndicator: showIndicator)
+            self?.refreshTask = nil
+        }
         refreshTask = task
         await task.value
-        refreshTask = nil
     }
 
     /// Fire-and-forget refresh; calls while one is running are merged into one more run.
     func refreshInBackground() {
-        if refreshTask != nil {
-            refreshQueued = true
-            return
-        }
-        Task {
-            await refreshAll()
-            if refreshQueued {
-                refreshQueued = false
-                await refreshAll()
-            }
-        }
+        Task { await refreshAll() }
     }
 
     private func loadAll(showIndicator: Bool) async {
@@ -249,6 +275,8 @@ final class AppStore {
         let loadedGroups = await groups
         next.groups = loadedGroups.isEmpty ? old.groups : loadedGroups
         next.aiEnabled = await ai
+        // Signed out (or another account) meanwhile: these answers belong to the previous session
+        guard self.user?.userId == uid else { return }
         data = next
         scheduleSave()
     }
@@ -263,18 +291,21 @@ final class AppStore {
 
     /// Only events (and duty requests) again, after a live update or an event action.
     func refreshEvents() async {
+        let uid = user?.userId
         async let events = try? repository.events()
         async let duties = try? repository.myDutyRequests()
-        if let list = await events { data.events = list }
-        if let list = await duties { data.dutyRequests = list }
+        let (loadedEvents, loadedDuties) = await (events, duties)
+        guard uid != nil, user?.userId == uid else { return }
+        if let list = loadedEvents { data.events = list }
+        if let list = loadedDuties { data.dutyRequests = list }
         scheduleSave()
     }
 
     func refreshThreads() async {
-        if let list = try? await repository.threads() {
-            data.threads = list
-            scheduleSave()
-        }
+        let uid = user?.userId
+        guard let list = try? await repository.threads(), uid != nil, user?.userId == uid else { return }
+        data.threads = list
+        scheduleSave()
     }
 
     /// Optimistic local change (e.g. an answered duty request disappears at once).
@@ -288,9 +319,10 @@ final class AppStore {
         saveTask?.cancel()
         let base = api.baseURL
         let userId = user.userId
-        saveTask = Task { [data] in
+        saveTask = Task { [data, weak self] in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
-            guard !Task.isCancelled, data.loaded else { return }
+            // Still the same account (logout cancels this task, a new login has another user)
+            guard !Task.isCancelled, data.loaded, self?.user?.userId == userId else { return }
             var snapshot = data
             snapshot.error = nil
             let finished = snapshot

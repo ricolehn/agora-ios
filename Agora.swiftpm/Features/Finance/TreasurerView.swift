@@ -124,9 +124,11 @@ final class TreasuryModel {
             transactions = t.items
             self.page = 1
             totalPages = max(t.totalPages, 1)
-            details = [:]
             loaded = true
             error = nil
+            // Opened cards keep their history and get it again with the new data (people no longer listed are dropped)
+            details = details.filter { id, _ in p.contains { $0.id == id } }
+            for id in details.keys { await detail(store, id) }
         } catch {
             self.error = APIError.text(error)
         }
@@ -157,7 +159,12 @@ final class TreasuryModel {
     }
 
     func detail(_ store: AppStore, _ id: String) async {
-        if let person = try? await store.repository.person(id: id) { details[id] = person }
+        if let person = try? await store.repository.person(id: id) {
+            details[id] = person
+        } else if details[id] == nil, let listed = people.first(where: { $0.id == id }) {
+            // Offline or a failed read: the list's record instead of a spinner without end (like Android)
+            details[id] = listed
+        }
     }
 }
 

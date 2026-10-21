@@ -9,7 +9,7 @@ final class ImagePipeline {
 
     private let memory = NSCache<NSURL, UIImage>()
     private var missing: Set<URL> = []
-    private var running: [URL: Task<UIImage?, Never>] = [:]
+    private var running: [URL: Task<(image: UIImage?, offline: Bool), Never>] = [:]
     var api: APIClient?
 
     private init() { memory.countLimit = 300 }
@@ -21,19 +21,33 @@ final class ImagePipeline {
     func image(_ url: URL) async -> UIImage? {
         if let image = memory.object(forKey: url as NSURL) { return image }
         if missing.contains(url) { return nil }
-        if let task = running[url] { return await task.value }
+        if let task = running[url] { return await task.value.image }
         let api = api
-        let task = Task<UIImage?, Never> {
-            guard let api else { return nil }
+        let task = Task<(image: UIImage?, offline: Bool), Never> {
+            guard let api else { return (nil, false) }
             let request = api.request(url)
-            guard let data = try? await api.execute(request, reportUnauthorized: false) else { return nil }
-            return await Task.detached(priority: .userInitiated) { UIImage(data: data)?.preparingForDisplay() ?? UIImage(data: data) }.value
+            let data: Data
+            do {
+                data = try await api.execute(request, reportUnauthorized: false)
+            } catch let error as APIError where error.status == 0 {
+                return (nil, true)
+            } catch {
+                return (nil, false)
+            }
+            let image = await Task.detached(priority: .userInitiated) { UIImage(data: data)?.preparingForDisplay() ?? UIImage(data: data) }.value
+            return (image, false)
         }
         running[url] = task
-        let image = await task.value
+        let result = await task.value
         running[url] = nil
-        if let image { memory.setObject(image, forKey: url as NSURL) } else { missing.insert(url) }
-        return image
+        if let image = result.image {
+            memory.setObject(image, forKey: url as NSURL)
+        } else if !result.offline {
+            // No picture on the server (e.g. no profile picture): not asked again this session. Without a connection it
+            // is tried again the next time it shows.
+            missing.insert(url)
+        }
+        return result.image
     }
 
     /// After uploading a new picture: forget the old one.

@@ -200,7 +200,7 @@ struct AiChatView: View {
         let visible = AiText.splitThinking(entry.content).visible
         let index = model.entries.firstIndex(of: entry) ?? 0
         let prompt = model.entries[..<index].last { $0.role == "user" }?.content ?? ""
-        let why = reason
+        let why = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         runner.run(toasts, success: String(localized: "Gemeldet – danke!")) {
             try await store.repository.report(type: "ai", content: visible, reason: why, prompt: prompt)
         }

@@ -69,7 +69,7 @@ struct BookPaymentSheet: View {
     @State private var standingOrder = false
 
     var body: some View {
-        let value = Amount.parse(amount) ?? 0
+        let value = Amount.typed(amount) ?? 0
         FormSheet(title: "Zahlung buchen", confirm: "Buchen", canConfirm: value > 0 && !date.isEmpty, busy: action.busy, error: action.error, onConfirm: save) {
             Section {
                 AmountField(title: "Betrag", text: $amount)
@@ -85,9 +85,10 @@ struct BookPaymentSheet: View {
     }
 
     private func save() {
-        let value = Amount.parse(amount) ?? 0
+        let value = Amount.typed(amount) ?? 0
         action.run(toasts: toasts, success: String(localized: "Zahlung gebucht"), dismiss: dismiss) {
-            try await store.repository.bookPayment(personId: person.id, amount: value, date: date, note: note, standingOrder: standingOrder)
+            try await store.repository.bookPayment(personId: person.id, amount: value, date: date,
+                                                   note: note.trimmingCharacters(in: .whitespacesAndNewlines), standingOrder: standingOrder)
             onDone()
         }
     }
@@ -117,7 +118,8 @@ struct ChangeStatusSheet: View {
                 Text("Ein Datum in der Vergangenheit ändert die Historie rückwirkend.")
             }
         }
-        .onAppear { if status.isEmpty { status = person.effectiveStatus.nilIfEmpty ?? MemberStatus.vollverdiener.rawValue } }
+        // The stored status like web and Android (not a change already planned for later)
+        .onAppear { if status.isEmpty { status = MemberStatus.known(person.status) } }
     }
 
     private func save() {
@@ -202,7 +204,7 @@ struct FinanceEntrySheet: View {
     @State private var receipts: [PickedFile] = []
 
     var body: some View {
-        let value = Amount.parse(amount) ?? 0
+        let value = Amount.typed(amount) ?? 0
         let valid = value > 0 && !name.trimmingCharacters(in: .whitespaces).isEmpty && !date.isEmpty
             && (kind == .donation || !description.trimmingCharacters(in: .whitespaces).isEmpty)
         FormSheet(title: kind == .donation ? "Spende erfassen" : "Ausgabe buchen", canConfirm: valid, busy: action.busy, error: action.error, onConfirm: save) {
@@ -220,17 +222,19 @@ struct FinanceEntrySheet: View {
     }
 
     private func save() {
-        let value = Amount.parse(amount) ?? 0
+        let value = Amount.typed(amount) ?? 0
         let files = receipts
+        let who = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = description.trimmingCharacters(in: .whitespacesAndNewlines)
         action.run(toasts: toasts, success: kind == .donation ? String(localized: "Spende gespeichert") : String(localized: "Ausgabe gespeichert"), dismiss: dismiss) {
             if kind == .donation {
-                try await store.repository.addDonation(amount: value, name: name, date: date, description: description)
+                try await store.repository.addDonation(amount: value, name: who, date: date, description: text)
             } else {
                 var names: [String] = []
                 for file in files {
-                    names.append(try await store.repository.uploadReceipt(ownerName: name, date: date, fileName: file.name, mimeType: file.mimeType, data: file.data))
+                    names.append(try await store.repository.uploadReceipt(ownerName: who, date: date, fileName: file.name, mimeType: file.mimeType, data: file.data))
                 }
-                try await store.repository.addExpense(amount: value, issuer: name, date: date, description: description, receipts: names)
+                try await store.repository.addExpense(amount: value, issuer: who, date: date, description: text, receipts: names)
             }
             onDone()
         }

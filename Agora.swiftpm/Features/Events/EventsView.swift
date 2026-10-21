@@ -36,13 +36,14 @@ struct EventsView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            if canCreate {
+            if canCreate && isManager {
                 FloatingAddButton {
-                    if isManager {
-                        Button { router.open(.eventEdit(id: nil, type: "termin")) } label: { Label("Neuer Termin", systemImage: "calendar.badge.plus") }
-                    }
+                    Button { router.open(.eventEdit(id: nil, type: "termin")) } label: { Label("Neuer Termin", systemImage: "calendar.badge.plus") }
                     Button { router.open(.eventEdit(id: nil, type: "event")) } label: { Label("Neues Event", systemImage: "sparkles") }
                 }
+            } else if canCreate {
+                // Members create events only: no menu with a single entry
+                FloatingAddButton(accessibility: "Neues Event", action: { router.open(.eventEdit(id: nil, type: "event")) }) { EmptyView() }
             }
         }
         .onAppear(perform: showTermineIfRequested)

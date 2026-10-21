@@ -9,6 +9,7 @@ struct EventDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var confirmDelete = false
+    @State private var sharing = false
     @State private var runner = ActionRunner()
 
     var body: some View {
@@ -49,19 +50,36 @@ struct EventDetailView: View {
                 }
                 badges(event)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(event.title)
-                        .font(.system(size: 28, weight: .bold))
-                        .tracking(-0.5)
-                        .foregroundStyle(Palette.text)
-                        .accessibilityAddTraits(.isHeader)
-                    if !event.createdByName.isEmpty {
-                        (Text("Veranstalter: ") + Text(event.createdByName).bold())
-                            .font(.system(size: 14))
-                            .foregroundStyle(Palette.textSecondary)
+                    // Title and organiser; on their right the share icon, no button around it (web: .event-detail-title-row)
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(event.title)
+                                .font(.system(size: 28, weight: .bold))
+                                .tracking(-0.5)
+                                .foregroundStyle(Palette.text)
+                                .accessibilityAddTraits(.isHeader)
+                            if !event.createdByName.isEmpty {
+                                (Text("Veranstalter: ") + Text(event.createdByName).bold())
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Palette.textSecondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Button { sharing = true } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 19, weight: .semibold))
+                                .foregroundStyle(Palette.textSecondary)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        // The icon ends where the cards below end; its touch target reaches into the page margin
+                        .padding(.trailing, -12)
+                        .accessibilityLabel("Teilen")
                     }
                     groupsLine(event)
                 }
-                InfoRow(icon: "calendar", color: Palette.violet, label: "Termin", value: Formats.eventWhen(event))
+                InfoRow(icon: "calendar", color: Palette.violet, label: "Termin", value: Formats.eventWhen(event), oneLine: true)
                 if !event.location.isEmpty { LocationRow(location: event.location) }
                 if !event.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     DescriptionCard(event: event)
@@ -92,14 +110,11 @@ struct EventDetailView: View {
                     .accessibilityLabel("Verwaltung")
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                ShareLink(item: shareText(event)) { Image(systemName: "square.and.arrow.up") }
-                    .accessibilityLabel("Teilen")
-            }
         }
         .confirmationDialog("Möchtest du dieses Event wirklich löschen?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Event löschen", role: .destructive) { delete(event) }
         }
+        .sheet(isPresented: $sharing) { EventShareSheet(eventId: event.id) }
     }
 
     private func badges(_ event: AgoraEvent) -> some View {
@@ -143,12 +158,6 @@ struct EventDetailView: View {
         .card()
     }
 
-    private func shareText(_ event: AgoraEvent) -> String {
-        var lines = [event.title, Formats.eventWhen(event)]
-        if !event.location.isEmpty { lines.append(event.location) }
-        return lines.joined(separator: "\n")
-    }
-
     private func delete(_ event: AgoraEvent) {
         runner.run(toasts, success: String(localized: "Event gelöscht")) {
             try await store.repository.deleteEvent(id: event.id)
@@ -165,6 +174,8 @@ struct InfoRow<Trailing: View>: View {
     let color: Color
     let label: LocalizedStringKey
     let value: String
+    /// One line that gets smaller on narrow phones (date and place, like web and Android), then ends with "…".
+    var oneLine = false
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
@@ -172,7 +183,14 @@ struct InfoRow<Trailing: View>: View {
             IconTile(systemImage: icon, color: color, size: 32)
             VStack(alignment: .leading, spacing: 2) {
                 CapsLabel(label)
-                Text(value).font(.system(size: 14.5, weight: .bold)).foregroundStyle(Palette.text).fixedSize(horizontal: false, vertical: true)
+                if oneLine {
+                    Text(value).font(.system(size: 14.5, weight: .bold)).foregroundStyle(Palette.text)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .truncationMode(.tail)
+                } else {
+                    Text(value).font(.system(size: 14.5, weight: .bold)).foregroundStyle(Palette.text).fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 0)
             trailing
@@ -186,11 +204,12 @@ struct InfoRow<Trailing: View>: View {
 }
 
 extension InfoRow where Trailing == EmptyView {
-    init(icon: String, color: Color, label: LocalizedStringKey, value: String) {
+    init(icon: String, color: Color, label: LocalizedStringKey, value: String, oneLine: Bool = false) {
         self.icon = icon
         self.color = color
         self.label = label
         self.value = value
+        self.oneLine = oneLine
         self.trailing = EmptyView()
     }
 }
@@ -201,7 +220,7 @@ struct LocationRow: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        InfoRow(icon: "mappin.and.ellipse", color: Palette.success, label: "Wo / Adresse", value: location) {
+        InfoRow(icon: "mappin.and.ellipse", color: Palette.success, label: "Wo / Adresse", value: location, oneLine: true) {
             if !Places.isOnline(location), let url = URL(string: "https://maps.apple.com/?q=\(location.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
                 Button { openURL(url) } label: {
                     Image(systemName: "arrow.up.right.square.fill")

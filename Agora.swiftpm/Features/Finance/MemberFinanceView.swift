@@ -26,10 +26,9 @@ struct MemberFinanceView: View {
                 TwoPane(spacing: 16, leftShare: 0.54) {
                     FinanceStatusCard(user: user, person: store.data.ownPerson, showDetails: true,
                                       onStatusTap: store.data.ownPerson == nil ? nil : { newRequest = .status })
-                    // What can be submitted (one tile per kind), then the own requests with their state (web beta18)
-                    if store.data.ownPerson != nil {
-                        RequestActions { newRequest = $0 }
-                    }
+                    // What can be submitted (one tile per kind), then the own requests with their state (web beta18); also
+                    // without a member record, like web and Android (the request then names the account)
+                    RequestActions { newRequest = $0 }
                     MyRequestsCard(requests: store.data.ownRequests) { openRequest = $0 }
                     if let person = store.data.ownPerson, !person.standingOrders.isEmpty {
                         Text("Daueraufträge").font(.agoraSection).foregroundStyle(Palette.text).padding(.top, 6)
@@ -154,14 +153,14 @@ struct NewRequestSheet: View {
             .interactiveDismissDisabled(busy)
         }
         .onAppear {
-            if newStatus.isEmpty { newStatus = store.data.ownPerson?.effectiveStatus.nilIfEmpty ?? MemberStatus.vollverdiener.rawValue }
+            if newStatus.isEmpty { newStatus = MemberStatus.known(store.data.ownPerson?.effectiveStatus) }
         }
     }
 
     private func submit() {
         error = nil
         guard let user = store.user else { return }
-        let value = Amount.parse(amount)
+        let value = Amount.typed(amount)
         if (kind != .status && amount.trimmingCharacters(in: .whitespaces).isEmpty) || date.isEmpty
             || (kind == .expense && description.trimmingCharacters(in: .whitespaces).isEmpty) {
             error = String(localized: "Bitte alle Felder ausfüllen.")
@@ -183,16 +182,20 @@ struct NewRequestSheet: View {
                     payload = ["newStatus": .string(newStatus), "date": .string(date)]
                 case .payment:
                     if standingOrder { type = "standing_order" }
-                    payload = ["amount": .string(String(format: "%.2f", value ?? 0)), "date": .string(date), "note": .string(note)]
+                    payload = ["amount": .string(String(format: "%.2f", value ?? 0)), "date": .string(date),
+                               "note": .string(note.trimmingCharacters(in: .whitespacesAndNewlines))]
                 case .expense:
                     var names: [String] = []
                     for file in receipts {
                         names.append(try await store.repository.uploadReceipt(ownerName: person?.name ?? user.fullName, date: date,
                                                                               fileName: file.name, mimeType: file.mimeType, data: file.data))
                     }
-                    let list = String(decoding: (try? JSONEncoder().encode(names)) ?? Data("[]".utf8), as: UTF8.self)
-                    payload = ["amount": .string(String(format: "%.2f", value ?? 0)), "description": .string(description),
-                               "date": .string(date), "receipt": .string(list)]
+                    payload = ["amount": .string(String(format: "%.2f", value ?? 0)),
+                               "description": .string(description.trimmingCharacters(in: .whitespacesAndNewlines)), "date": .string(date)]
+                    // Only with receipts (an empty list would count as "receipt attached" in the lists and the report)
+                    if !names.isEmpty {
+                        payload["receipt"] = .string(String(decoding: (try? JSONEncoder().encode(names)) ?? Data("[]".utf8), as: UTF8.self))
+                    }
                 }
                 try await store.repository.submitRequest(user: user, person: person, type: type, data: payload)
                 await store.refreshAll()

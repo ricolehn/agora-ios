@@ -1,20 +1,24 @@
 import Foundation
 import Security
 
-/// Saved session: server address, account and app name in UserDefaults, the token in the Keychain.
+/// Saved session: server address and app name in UserDefaults; the token and the account (e-mail, permissions,
+/// calendar key) in the Keychain, only on this device and never in backups.
 final class SessionStore: @unchecked Sendable {
     private let defaults: UserDefaults
     private let keychain: TokenStore
+    private let userItem: TokenStore
 
     private enum Keys {
         static let baseURL = "agora.baseURL"
-        static let user = "agora.user"
+        /// Where versions up to 1.0.0-beta3 / ORION kept the account (UserDefaults are part of device backups).
+        static let legacyUser = "agora.user"
         static let appName = "agora.appName"
     }
 
-    init(defaults: UserDefaults = .standard, keychain: TokenStore = TokenStore()) {
+    init(defaults: UserDefaults = .standard, keychain: TokenStore = TokenStore(), userItem: TokenStore = TokenStore(account: "user")) {
         self.defaults = defaults
         self.keychain = keychain
+        self.userItem = userItem
     }
 
     struct Saved {
@@ -24,7 +28,15 @@ final class SessionStore: @unchecked Sendable {
     }
 
     func current() -> Saved {
-        let user = defaults.data(forKey: Keys.user).flatMap { try? JSONDecoder().decode(User.self, from: $0) }
+        var user = userItem.read().flatMap { try? JSONDecoder().decode(User.self, from: Data($0.utf8)) }
+        if let legacy = defaults.data(forKey: Keys.legacyUser) {
+            // Moved out of the backed-up UserDefaults once
+            if user == nil, let moved = try? JSONDecoder().decode(User.self, from: legacy) {
+                user = moved
+                updateUser(moved)
+            }
+            defaults.removeObject(forKey: Keys.legacyUser)
+        }
         return Saved(baseURL: defaults.string(forKey: Keys.baseURL) ?? "", token: keychain.read(), user: user)
     }
 
@@ -40,21 +52,24 @@ final class SessionStore: @unchecked Sendable {
     }
 
     func updateUser(_ user: User) {
-        if let data = try? JSONEncoder().encode(user) { defaults.set(data, forKey: Keys.user) }
+        if let data = try? JSONEncoder().encode(user) { userItem.write(String(decoding: data, as: UTF8.self)) }
     }
 
     func clearSession() {
         keychain.delete()
-        defaults.removeObject(forKey: Keys.user)
+        userItem.delete()
+        defaults.removeObject(forKey: Keys.legacyUser)
     }
 }
 
-/// The token in the Keychain (only this device, available after the first unlock so background refreshes work).
+/// A text in the Keychain (only this device, available after the first unlock so background refreshes work): the
+/// token, and the account as JSON.
 struct TokenStore: Sendable {
     var service = "org.agora.app.session"
+    var account = "token"
 
     private var query: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "token"]
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
 
     func read() -> String? {

@@ -28,7 +28,10 @@ enum ImageTools {
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1
         format.opaque = true
-        let rendered = UIGraphicsImageRenderer(size: target, format: format).image { _ in
+        let rendered = UIGraphicsImageRenderer(size: target, format: format).image { context in
+            // JPEG has no transparency: transparent parts of a PNG become white, not black (like Android)
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: target))
             image.draw(in: CGRect(x: -crop.minX * scale, y: -crop.minY * scale, width: source.width * scale, height: source.height * scale))
         }
         return rendered.jpegData(compressionQuality: quality)
@@ -44,7 +47,7 @@ struct PickedFile: Identifiable, Equatable {
     var preview: UIImage?
 }
 
-/// Receipt picker: photos (converted to JPEG) or PDF/image files, up to [limit], each removable.
+/// Receipt picker: photos or image files (converted to JPEG; the server takes pictures only), up to [limit], each removable.
 struct ReceiptPicker: View {
     @Binding var files: [PickedFile]
     var limit = 5
@@ -108,7 +111,7 @@ struct ReceiptPicker: View {
                 photos = []
             }
         }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.pdf, .image], allowsMultipleSelection: true) { result in
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
             for url in urls where files.count < limit {
                 let access = url.startAccessingSecurityScopedResource()
@@ -118,10 +121,7 @@ struct ReceiptPicker: View {
                     toasts.show(String(localized: "Datei zu groß (max. 10 MB)"), error: true)
                     continue
                 }
-                let type = UTType(filenameExtension: url.pathExtension) ?? .data
-                if type.conforms(to: .pdf) {
-                    files.append(PickedFile(name: url.lastPathComponent, mimeType: "application/pdf", data: data))
-                } else if let jpeg = ImageTools.jpeg(from: data, aspect: nil, maxWidth: 2000, quality: 0.8) {
+                if let jpeg = ImageTools.jpeg(from: data, aspect: nil, maxWidth: 2000, quality: 0.8) {
                     files.append(PickedFile(name: url.deletingPathExtension().lastPathComponent + ".jpg", mimeType: "image/jpeg", data: jpeg, preview: UIImage(data: jpeg)))
                 }
             }
@@ -129,17 +129,33 @@ struct ReceiptPicker: View {
     }
 }
 
-/// Amount text field accepting German input ("12,50").
+/// Amount text field accepting German input ("12,50"). An amount that cannot be read unambiguously ("1.500": 1500 or
+/// 1.5?) is marked with how to write it, like web and Android; read the value with `Amount.typed`.
 struct AmountField: View {
     let title: LocalizedStringKey
     @Binding var text: String
 
     var body: some View {
-        HStack {
-            TextField(title, text: $text)
-                .keyboardType(.decimalPad)
-            Text("€").foregroundStyle(Palette.textSecondary)
+        let unclear = Amount.isUnclear(text)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                // Digits and the two separators only, also from hardware keyboards and pasting (like Android)
+                TextField(title, text: Binding(get: { text }, set: { text = Amount.typeable($0) }))
+                    .keyboardType(.decimalPad)
+                    .foregroundStyle(unclear ? Palette.danger : Palette.text)
+                Text("€").foregroundStyle(Palette.textSecondary)
+            }
+            if unclear { AmountHint() }
         }
+    }
+}
+
+/// How to write an amount that was not clear (web: amount_format_hint).
+struct AmountHint: View {
+    var body: some View {
+        Text("Bitte z. B. 1500 oder 1.500,00 eingeben.")
+            .font(.footnote)
+            .foregroundStyle(Palette.danger)
     }
 }
 
