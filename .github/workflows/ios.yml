@@ -1,0 +1,73 @@
+name: iOS
+
+# Builds the app and runs the logic tests on every push and pull request. The app is a Swift Playgrounds package
+# (Agora.swiftpm): xcodebuild builds it like Xcode does, without signing.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  logic-tests:
+    name: Logic tests (Linux)
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run the logic tests
+        run: ./scripts/test-logic.sh
+
+  build:
+    name: Build (iOS)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select the newest stable Xcode
+        run: |
+          xcode="$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi -e beta -e rc | sort -V | tail -1)"
+          if [ -n "$xcode" ]; then sudo xcode-select -s "$xcode"; fi
+          xcodebuild -version
+          swift --version
+
+      - name: Run the logic tests (macOS)
+        run: ./scripts/test-logic.sh
+
+      - name: List schemes
+        working-directory: Agora.swiftpm
+        run: xcodebuild -list
+
+      - name: Build the app (iOS device, unsigned)
+        working-directory: Agora.swiftpm
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -scheme Agora \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee "$RUNNER_TEMP/build.log" | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" "$RUNNER_TEMP/build.log"
+
+      - name: Check the app bundle
+        run: |
+          app="$(find "$RUNNER_TEMP/DerivedData/Build/Products" -maxdepth 2 -name "*.app" -type d | head -1)"
+          echo "App: $app"
+          ls "$app"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" -c "Print :CFBundleShortVersionString" -c "Print :CFBundleVersion" "$app/Info.plist"
+          # Apple needs the privacy manifest at the root of the app bundle (UserDefaults is an API with a required reason)
+          test -f "$app/PrivacyInfo.xcprivacy" && echo "PrivacyInfo.xcprivacy at the bundle root" || { echo "::error::PrivacyInfo.xcprivacy is missing in the app bundle"; find "$app" -name "*.xcprivacy"; exit 1; }
+
+      - name: Upload the build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ runner.temp }}/build.log
+          if-no-files-found: ignore
