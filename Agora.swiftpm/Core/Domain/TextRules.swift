@@ -105,3 +105,16 @@ enum ServerLogoRules {
         return String(text[start.lowerBound...])
     }
 }
+
+/// Which links the app hands on (Android 1.3.1): server content such as event descriptions and AI answers may contain
+/// links of any scheme; only the web, e-mail and phone are opened, never `file:` or other apps' schemes.
+enum LinkRules {
+    static func opensFromText(_ url: URL) -> Bool {
+        ["http", "https", "mailto", "tel"].contains(url.scheme?.lowercased() ?? "")
+    }
+
+    /// The calendar subscription goes to the calendar app only as `webcal(s)` or `https`.
+    static func isCalendarSubscription(_ url: URL) -> Bool {
+        ["webcal", "webcals", "https"].contains(url.scheme?.lowercased() ?? "")
+    }
+}

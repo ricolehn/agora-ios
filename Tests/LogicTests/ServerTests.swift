@@ -6,6 +6,19 @@ enum ServerTests {
     private static func parse(_ status: Int, _ body: String) -> APIError { APIError.parse(status: status, body: Data(body.utf8)) }
 
     static let all: [TestCase] = [
+        TestCase("links in server content open only on the web, by e-mail or phone (Android 1.3.1)") {
+            for link in ["https://agora.example/events", "http://example.org", "mailto:gemeinde@example.org", "tel:+4930123", "HTTPS://EXAMPLE.ORG"] {
+                expect(LinkRules.opensFromText(URL(string: link)!), link)
+            }
+            for link in ["file:///etc/passwd", "intent://scan#Intent;end", "javascript:alert(1)", "shortcuts://run", "agora-other://x"] {
+                expect(!LinkRules.opensFromText(URL(string: link)!), link)
+            }
+            for link in ["webcal://agora.example/feed.ics", "webcals://agora.example/feed.ics", "https://agora.example/feed.ics"] {
+                expect(LinkRules.isCalendarSubscription(URL(string: link)!), link)
+            }
+            expect(!LinkRules.isCalendarSubscription(URL(string: "http://agora.example/feed.ics")!))
+            expect(!LinkRules.isCalendarSubscription(URL(string: "file:///feed.ics")!))
+        },
         TestCase("errors are read in the shape of API v2, of the old API, of a starting server and as plain text") {
             let v2 = parse(400, #"{"error":{"code":"invalid","message":"Der Betrag dieser Anfrage kann so nicht gebucht werden.","field":"details.amount"}}"#)
             expectEqual(v2.status, 400)

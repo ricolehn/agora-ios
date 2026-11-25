@@ -559,7 +559,8 @@ private struct CalendarSettingsPage: View {
                             Text(feed.feedUrl).font(.system(size: 13, design: .monospaced)).foregroundStyle(Palette.text).lineLimit(2)
                         }
                     }
-                    if let webcal = URL(string: feed.webcalUrl.isEmpty ? feed.feedUrl.replacingOccurrences(of: "https://", with: "webcal://") : feed.webcalUrl) {
+                    if let webcal = URL(string: feed.webcalUrl.isEmpty ? feed.feedUrl.replacingOccurrences(of: "https://", with: "webcal://") : feed.webcalUrl),
+                       LinkRules.isCalendarSubscription(webcal) {
                         Button { openURL(webcal) } label: { Label("Auf diesem Gerät abonnieren", systemImage: "calendar.badge.plus") }
                         if let encoded = webcal.absoluteString.addingPercentEncoding(withAllowedCharacters: .alphanumerics),
                            let google = URL(string: "https://calendar.google.com/calendar/r?cid=\(encoded)") {

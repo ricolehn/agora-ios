@@ -63,7 +63,11 @@ struct MarkdownView: View {
 
     private func inline(_ text: String) -> Text {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace, failurePolicy: .returnPartiallyParsedIfPossible)
-        let attributed = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        var attributed = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        // Server content: links of other schemes stay plain text (LinkRules)
+        for run in attributed.runs {
+            if let link = run.link, !LinkRules.opensFromText(link) { attributed[run.range].link = nil }
+        }
         return Text(attributed).foregroundColor(color)
     }
 }

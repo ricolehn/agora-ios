@@ -488,12 +488,19 @@ struct ReportSheet: View {
             preview = document.page(at: 0)?.thumbnail(of: CGSize(width: 1000, height: 1415), for: .mediaBox)
         }
         // File for sharing (one at a time in the temp folder)
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("reports", isDirectory: true)
+        let folder = ReportFiles.folder
         try? FileManager.default.removeItem(at: folder)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let url = folder.appendingPathComponent(fileName)
         fileURL = (try? data.write(to: url)) != nil ? url : nil
     }
+}
+
+/// Where the shared report lies; deleted on sign-out with the account's other data (Android 1.3.1).
+enum ReportFiles {
+    static var folder: URL { FileManager.default.temporaryDirectory.appendingPathComponent("reports", isDirectory: true) }
+
+    static func clear() { try? FileManager.default.removeItem(at: folder) }
 }
 
 /// PDF for the "Save to Files" dialog.

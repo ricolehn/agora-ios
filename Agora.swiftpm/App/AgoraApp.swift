@@ -12,7 +12,10 @@ struct AgoraIOSApp: App {
         let api = APIClient(userAgent: "AgoraiOS/\(AppInfo.version)")
         let store = AppStore(repository: Repository(api: api), session: SessionStore(), cache: DataCache())
         ImagePipeline.shared.api = api
-        store.onLogout = { ImagePipeline.shared.clear() }
+        store.onLogout = {
+            ImagePipeline.shared.clear()
+            ReportFiles.clear()
+        }
         _store = State(initialValue: store)
     }
 
