@@ -92,7 +92,7 @@ async function main() {
     const setup = await call(null, 'POST', '/api/setup', {
       appName: 'Gemeinde am Lindenhof',
       defaultLanguage: 'de',
-      adminUser: { firstName: 'Anna', lastName: 'Albrecht', email: 'admin@demo.agora', password: PASSWORD, memberSince: '2015-03-01' }
+      adminUser: { firstName: 'Anna', lastName: 'Albrecht', email: 'admin@demo.agora', password: PASSWORD, memberSince: monthStart(-4) }
     });
     tokens.admin = setup.token;
   }
@@ -114,11 +114,11 @@ async function main() {
 
   // Accounts (the people of the checklist) and members without an account (the fee list)
   const accounts = [
-    { who: 'member', firstName: 'Max', lastName: 'Müller', email: 'mitglied@demo.agora', groups: ['Technik'], status: 'vollverdiener', since: '2019-09-01' },
-    { who: 'treasurer', firstName: 'Tina', lastName: 'Kaufmann', email: 'kasse@demo.agora', groups: ['Kasse'], status: 'vollverdiener', since: '2012-01-01' },
-    { who: 'events', firstName: 'Elias', lastName: 'Becker', email: 'events@demo.agora', groups: ['Eventteam', 'Lobpreis'], status: 'geringverdiener', since: '2021-05-01' },
-    { who: 'mentor', firstName: 'Miriam', lastName: 'Schneider', email: 'mentor@demo.agora', groups: [], status: 'vollverdiener', since: '2010-02-01' },
-    { who: 'mentoring', firstName: 'Lea', lastName: 'Hoffmann', email: 'mentoring@demo.agora', groups: ['Mentoring-Leitung'], status: 'keinverdiener', since: '2023-10-01' }
+    { who: 'member', firstName: 'Max', lastName: 'Müller', email: 'mitglied@demo.agora', groups: ['Technik'], status: 'vollverdiener', since: monthStart(-4) },
+    { who: 'treasurer', firstName: 'Tina', lastName: 'Kaufmann', email: 'kasse@demo.agora', groups: ['Kasse'], status: 'vollverdiener', since: monthStart(-4) },
+    { who: 'events', firstName: 'Elias', lastName: 'Becker', email: 'events@demo.agora', groups: ['Eventteam', 'Lobpreis'], status: 'geringverdiener', since: monthStart(-4) },
+    { who: 'mentor', firstName: 'Miriam', lastName: 'Schneider', email: 'mentor@demo.agora', groups: [], status: 'vollverdiener', since: monthStart(-4) },
+    { who: 'mentoring', firstName: 'Lea', lastName: 'Hoffmann', email: 'mentoring@demo.agora', groups: ['Mentoring-Leitung'], status: 'keinverdiener', since: monthStart(-1) }
   ];
   const users = { admin };
   const knownUsers = await call('admin', 'GET', '/api/admin/users');
@@ -133,10 +133,10 @@ async function main() {
     users[account.who] = await login(account.who, account.email);
   }
   for (const [firstName, lastName, status, since] of [
-    ['Jonas', 'Weber', 'vollverdiener', '2018-04-01'],
-    ['Sophie', 'Wagner', 'geringverdiener', '2020-01-01'],
-    ['Paul', 'Fischer', 'pausiert', '2016-06-01'],
-    ['Hanna', 'Schulz', 'keinverdiener', '2024-02-01']
+    ['Jonas', 'Weber', 'vollverdiener', monthStart(-4)],
+    ['Sophie', 'Wagner', 'geringverdiener', monthStart(-4)],
+    ['Paul', 'Fischer', 'pausiert', monthStart(-10)],
+    ['Hanna', 'Schulz', 'keinverdiener', monthStart(0)]
   ]) {
     if (!userList.some((user) => user.firstName === firstName && user.lastName === lastName)) {
       await call('admin', 'POST', '/api/admin/users', { firstName, lastName, pays: status !== 'pausiert', status, memberSince: since });
@@ -144,7 +144,11 @@ async function main() {
   }
 
   // Monthly fees per status, as the web app's settings write them
-  await call('admin', 'PUT', '/api/db', { path: 'settings', value: { vollverdiener: 30, geringverdiener: 15, keinverdiener: 5, pausiert: 0 } });
+  // (servers 3.2+ keep a fee schedule: set from the beginning through the admin endpoint, like the web app's settings)
+  const fees = { vollverdiener: 30, geringverdiener: 15, keinverdiener: 5 };
+  const preview = await call('admin', 'POST', '/api/admin/fees/preview', { from: null, fees }).catch(() => null);
+  if (preview?.version) await call('admin', 'POST', '/api/admin/fees', { from: null, fees, version: preview.version });
+  else await call('admin', 'PUT', '/api/db', { path: 'settings', value: { ...fees, pausiert: 0 } });
 
   // Payments of the last months; one member pays by standing order, one is behind
   const people = await call('treasurer', 'GET', '/api/db?path=people');
@@ -156,7 +160,9 @@ async function main() {
     'Elias Becker': months.slice(0, 3).map((date) => ({ amount: 15, date, note: 'Mitgliedsbeitrag' })),
     'Miriam Schneider': [{ amount: 150, date: months[0], note: 'Beitrag fünf Monate' }],
     'Jonas Weber': months.slice(0, 2).map((date) => ({ amount: 30, date, note: 'Mitgliedsbeitrag' })),
-    'Sophie Wagner': months.map((date) => ({ amount: 15, date, note: 'Mitgliedsbeitrag' }))
+    'Sophie Wagner': months.map((date) => ({ amount: 15, date, note: 'Mitgliedsbeitrag' })),
+    'Anna Albrecht': [{ amount: 150, date: months[0], note: 'Beitrag fünf Monate' }],
+    'Lea Hoffmann': [{ amount: 10, date: months[3], note: 'Mitgliedsbeitrag' }]
   };
   for (const [name, payments] of Object.entries(plan)) {
     const key = keyOf(name);
