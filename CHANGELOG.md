@@ -1,8 +1,41 @@
 # Changelog
 
 All notable changes of the iOS app. Releases are tagged on GitHub; versions without a date are not released yet.
-Codenames follow the Agora family: the web app (server) 3.1 *ORION* and 3.2 *AIR TEMPLE*, Android 1.2 *AZULA*,
-iOS 1.0 *APPA*.
+Codenames follow the Agora family: the web app (server) 3.1 *ORION*, 3.2 *AIR TEMPLE*, 3.3 *BA SING SE* and 3.4
+*CALDERA*, Android 1.2 *AZULA* and 1.4 *CHONG*, iOS 1.0 *APPA*.
+
+## Unreleased – catching up with *CALDERA*
+
+Towards the level of the server 3.4.0 *CALDERA* and Android 1.4.1 *CHONG*; what is still open is listed in
+[docs/HANDOVER.md](docs/HANDOVER.md). Checked against a CALDERA server: the app's reads, and the paid-until month of
+all members. Compiles on CI and passes the logic tests; not yet tested on a device.
+
+**Finances**
+- Donations and expenses are no longer lost when two devices save at the same moment: the list is written with the
+  version it was read with and read again when it changed meanwhile (of five donations saved at once, four were lost).
+- The fresh start of the fee accounts (CALDERA): "Neustart am …" on the member card for 60 days, a marked point in
+  the history with what happened (credit carried over, arrears dropped), the time before it quieter, and a hint when a
+  payment is booked with a day before it. "… im Monat" is the server's fee of this month (fees over time).
+
+**Events**
+- The editor refuses a minimum of participants above the places before saving (the server refuses it now); the
+  registration line says "noch 2 nötig (mind. 5)" or "Mindestzahl 5 erreicht".
+
+**AI**
+- The server's lookups (CALDERA): text the AI writes before a lookup is a note among the steps, no longer part of the
+  answer. The line above a reply says what the AI is doing (its thought, or "Schlägt Ausgaben 2019–2024 nach") and
+  afterwards "Nachgedacht · 2× nachgeschlagen"; a tap opens the steps with what each lookup found.
+
+**App**
+- Server messages come in German (`Accept-Language`), API v2's error shape is understood, and a server that is
+  starting or upgrading its database says "Bitte gleich noch einmal versuchen" instead of "nicht erreichbar".
+- Security, like Android 1.3.1: links in event descriptions and AI answers open only web, e-mail and phone addresses;
+  the calendar subscription only as `webcal(s)` / `https`; a shared financial report is deleted on sign-out.
+
+**Development**
+- CI takes screenshots of the running app in the simulator (iPhone light and dark, small iPhone, iPad) against a
+  throwaway server with demo data (`.github/workflows/screenshots.yml`, `scripts/screenshots/`). Debug builds can be
+  driven by launch variables for this (`ScreenshotDriver`); release builds are unchanged.
 
 ## 1.0.0 *APPA* – unreleased
 
