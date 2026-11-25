@@ -201,3 +201,63 @@ struct PlanSongs: Decodable, Sendable {
         songs = c.models("songs")
     }
 }
+
+// MARK: AI chat stream
+
+/// The server looks something up for the AI (CALDERA): [tool] – payments, expenses, donations, money, members, events,
+/// money_totals, finance_changes; anything else counts as data –, the model's own words for what it does ([step]), the
+/// days it reads ([from], [to]) and whom or what it is about ([about]).
+struct AiLookup: Equatable, Sendable {
+    var id: Int?
+    var tool: String
+    var step: String?
+    var from: String?
+    var to: String?
+    var about: String?
+}
+
+/// What lookup [id] found: [count] of [unit] (entries, events, changes, members, periods), with [eur] in all and [cut]
+/// when the result was shortened – or [error] (forbidden, failed).
+struct AiLookupDone: Equatable, Sendable {
+    var id: Int?
+    var count: Int?
+    var unit: String?
+    var eur: Double?
+    var cut = false
+    var error: String?
+}
+
+/// One piece of the AI stream (`data: {...}` lines of POST /api/ai/chat).
+enum AiChunk: Equatable, Sendable {
+    case content(String)
+    case reasoning(String)
+    case lookup(AiLookup)
+    case lookupDone(AiLookupDone)
+
+    /// The chunks of one `data:` line ([event]: its JSON object); none for what the app does not know.
+    static func of(_ event: [String: JSONValue]) -> [AiChunk] {
+        func text(_ object: [String: JSONValue], _ key: String) -> String? {
+            guard case .string(let value)? = object[key], !value.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+            return value
+        }
+        func number(_ object: [String: JSONValue], _ key: String) -> Double? {
+            guard case .number(let value)? = object[key] else { return nil }
+            return value
+        }
+        var chunks: [AiChunk] = []
+        if case .string(let value)? = event["content"] { chunks.append(.content(value)) }
+        if case .string(let value)? = event["reasoning"] { chunks.append(.reasoning(value)) }
+        if let lookup = event["lookup"]?.objectValue {
+            chunks.append(.lookup(AiLookup(id: number(lookup, "id").map { Int($0) }, tool: text(lookup, "tool") ?? "unknown",
+                                           step: text(lookup, "step"), from: text(lookup, "from"), to: text(lookup, "to"),
+                                           about: text(lookup, "about"))))
+        }
+        if let done = event["lookupDone"]?.objectValue {
+            var cut = false
+            if case .bool(true)? = done["cut"] { cut = true }
+            chunks.append(.lookupDone(AiLookupDone(id: number(done, "id").map { Int($0) }, count: number(done, "count").map { Int($0) },
+                                                   unit: text(done, "unit"), eur: number(done, "eur"), cut: cut, error: text(done, "error"))))
+        }
+        return chunks
+    }
+}

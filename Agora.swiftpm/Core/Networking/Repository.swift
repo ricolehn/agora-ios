@@ -22,11 +22,6 @@ struct EventInput: Sendable {
     var duties: [String] = []
 }
 
-enum AiChunk: Sendable {
-    case content(String)
-    case reasoning(String)
-}
-
 /// How approving or rejecting a request ended.
 enum RequestDecision: Sendable {
     case done
@@ -544,8 +539,7 @@ final class Repository: Sendable {
                         let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
                         if payload == "[DONE]" { break }
                         guard let object = try? JSONDecoder().decode([String: JSONValue].self, from: Data(payload.utf8)) else { continue }
-                        if let text = object["content"]?.text { continuation.yield(.content(text)) }
-                        if let text = object["reasoning"]?.text { continuation.yield(.reasoning(text)) }
+                        for chunk in AiChunk.of(object) { continuation.yield(chunk) }
                         if let error = object["error"]?.text { throw APIError(status: 500, message: error) }
                     }
                     continuation.finish()

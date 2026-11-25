@@ -5,9 +5,17 @@ struct AiEntry: Identifiable, Equatable {
     let id = UUID()
     let role: String
     var content: String
-    var reasoning = ""
+    /// An answer of the AI: its steps (thoughts, notes, lookups) and the text after the last lookup.
+    var work = AiReplyWork()
     var streaming = false
     var error = false
+}
+
+extension AiEntry {
+    /// The visible answer of the AI (no thoughts, no notes before a lookup), the question as typed.
+    var answer: String { role == "user" ? content : AiText.splitThinking(work.content).visible }
+    /// What goes back to the server as the conversation so far.
+    var sentText: String { answer }
 }
 
 /// Conversation lives only in memory (like the web app); the server is stateless.
@@ -28,13 +36,10 @@ final class AiChatModel {
         task = Task {
             defer { busy = false }
             do {
-                let stream = try store.repository.aiChat(history: history.map { AiMessage(role: $0.role, content: $0.content) })
+                let stream = try store.repository.aiChat(history: history.map { AiMessage(role: $0.role, content: $0.sentText) })
                 for try await chunk in stream {
                     guard let last = entries.indices.last else { break }
-                    switch chunk {
-                    case .content(let text): entries[last].content += text
-                    case .reasoning(let text): entries[last].reasoning += text
-                    }
+                    entries[last].work.add(chunk)
                 }
                 if let last = entries.indices.last { entries[last].streaming = false }
             } catch is CancellationError {
@@ -197,7 +202,7 @@ struct AiChatView: View {
     }
 
     private func report(_ entry: AiEntry) {
-        let visible = AiText.splitThinking(entry.content).visible
+        let visible = entry.answer
         let index = model.entries.firstIndex(of: entry) ?? 0
         let prompt = model.entries[..<index].last { $0.role == "user" }?.content ?? ""
         let why = reason.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -210,7 +215,6 @@ struct AiChatView: View {
 struct AiBubble: View {
     let entry: AiEntry
     let onReport: () -> Void
-    @State private var showThinking = false
 
     var body: some View {
         if entry.role == "user" {
@@ -238,8 +242,7 @@ struct AiBubble: View {
                 Spacer(minLength: 30)
             }
         } else {
-            let split = AiText.splitThinking(entry.content)
-            let thinking = [entry.reasoning.trimmingCharacters(in: .whitespacesAndNewlines), split.thinking].filter { !$0.isEmpty }.joined(separator: "\n")
+            let split = AiText.splitThinking(entry.work.content)
             // The reply: plain text beside a small sparkle, like modern assistants
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "sparkles")
@@ -249,21 +252,7 @@ struct AiBubble: View {
                     .background(Palette.primary.opacity(0.12), in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 8) {
-                    if !thinking.isEmpty {
-                        Button {
-                            withAnimation(.snappy) { showThinking.toggle() }
-                        } label: {
-                            Label(showThinking ? "Denkprozess ausblenden" : "Denkprozess anzeigen", systemImage: "brain")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Palette.textSecondary)
-                        }
-                        .buttonStyle(.plain)
-                        if showThinking {
-                            Text(thinking).font(.system(size: 13)).foregroundStyle(Palette.textSecondary).italic()
-                                .padding(10)
-                                .background(Palette.surfaceAlt, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        }
-                    }
+                    AiThinkingLine(entry: entry, inlineThinking: split.thinking, visible: split.visible)
                     if entry.streaming && split.visible.isEmpty {
                         TypingDots()
                     } else {
@@ -285,6 +274,84 @@ struct AiBubble: View {
                 .frame(maxWidth: 640, alignment: .leading)
                 Spacer(minLength: 0)
             }
+        }
+    }
+}
+
+/// One quiet line above a reply (web: .ai-thinking, Android): what the AI is doing right now – "Denkt nach", the title
+/// of its newest thought, or (CALDERA) the lookup the server makes for it; afterwards "Nachgedacht · 2× nachgeschlagen".
+/// A tap opens the steps below it. A reply without thoughts or lookups shows no line once it is complete.
+struct AiThinkingLine: View {
+    let entry: AiEntry
+    let inlineThinking: String
+    let visible: String
+    @State private var open = false
+
+    private var steps: [AiStep] {
+        let inline = inlineThinking.trimmingCharacters(in: .whitespacesAndNewlines)
+        return entry.work.steps + (inline.isEmpty ? [] : [.thought(inline)])
+    }
+
+    private var title: String {
+        guard entry.streaming else { return AiReplyText.doneTitle(lookups: entry.work.lookups) }
+        switch AiReplyText.liveLabel(steps: entry.work.steps, content: visible, inlineThinking: inlineThinking) {
+        case .thought(let title)?: return title
+        case .lookup(let lookup)?: return AiReplyText.lookupTitle(lookup)
+        case nil: return String(localized: "Denkt nach")
+        }
+    }
+
+    var body: some View {
+        if entry.streaming || !steps.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Button {
+                    withAnimation(.snappy) { open.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(title).lineLimit(1).contentTransition(.opacity)
+                        if !steps.isEmpty {
+                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).rotationEffect(.degrees(open ? 90 : 0))
+                        }
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Palette.textSecondary)
+                    .animation(.easeInOut(duration: 0.2), value: title)
+                }
+                .buttonStyle(.plain)
+                .disabled(steps.isEmpty)
+                .accessibilityHint(steps.isEmpty ? "" : (open ? "Schritte ausblenden" : "Schritte anzeigen"))
+                if open {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(steps.enumerated()), id: \.offset) { _, step in stepRow(step) }
+                    }
+                    .padding(.leading, 10)
+                    .overlay(alignment: .leading) { Rectangle().fill(Palette.warning.opacity(0.45)).frame(width: 2) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func stepRow(_ step: AiStep) -> some View {
+        switch step {
+        case .thought(let text):
+            Text(text).font(.system(size: 13)).italic().foregroundStyle(Palette.textSecondary)
+        case .note(let text):
+            MarkdownView(text: text, fontSize: 13, color: Palette.textSecondary)
+        case .lookup(let lookup, let done):
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: done?.error != nil ? "exclamationmark.triangle" : "magnifyingglass")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Palette.primary)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(AiReplyText.lookupTitle(lookup)).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.text)
+                    if let found = AiReplyText.lookupFound(done, money: Formats.money) {
+                        Text(found).font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
+                    }
+                }
+            }
+            .accessibilityElement(children: .combine)
         }
     }
 }
