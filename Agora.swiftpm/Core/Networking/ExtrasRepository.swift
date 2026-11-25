@@ -57,7 +57,12 @@ extension Repository {
 
     // MARK: Order of service
 
-    func program(eventId: String) async throws -> Program { try await api.get("/api/events/\(segment(eventId))/program") }
+    func program(eventId: String) async throws -> Program {
+        try await v2Or({
+            let event: JSONValue = try await v2.call(.get, "/events/\(ApiV2.segment(eventId))")
+            return try api.decoder.decode(Program.self, from: api.encoder.encode(V2Calendar.program(ofEvent: event)))
+        }, { try await api.get("/api/events/\(segment(eventId))/program") })
+    }
 
     func saveProgram(eventId: String, items: [ProgramItem]) async throws -> Program {
         let list: [JSONValue] = items.map { item in
@@ -69,13 +74,27 @@ extension Repository {
             if let minutes = item.minutes { entry["minutes"] = .of(minutes) }
             return entry
         }
-        return try await api.send(.put, "/api/events/\(segment(eventId))/program", body: ["items": .array(list)])
+        return try await v2Or({
+            // v2 takes a song's id and key only on entries that are songs
+            let entries: [JSONValue] = list.map { entry in
+                guard var object = entry.objectValue else { return entry }
+                if (object["songId"]?.text ?? "").isEmpty {
+                    object["songId"] = nil
+                    object["songKey"] = nil
+                }
+                return .object(object)
+            }
+            let saved: JSONValue = try await v2.call(.put, "/events/\(ApiV2.segment(eventId))/program", body: ["items": .array(entries)])
+            // The answer is for one who may edit it
+            return try api.decoder.decode(Program.self, from: api.encoder.encode(["items": saved["items"] ?? .array([]), "canEdit": true] as JSONValue))
+        }, { try await api.send(.put, "/api/events/\(segment(eventId))/program", body: ["items": .array(list)]) })
     }
 
     func planSongs() async throws -> [PlanSong] { try await api.get("/api/songs", as: PlanSongs.self).songs }
 
     /// Adds an empty task (no person, no e-mail), like the web's `{ roleName }`.
     func addEmptyTask(eventId: String, roleName: String) async throws {
-        try await api.perform(.post, "/api/events/\(segment(eventId))/duties", body: ["roleName": .string(roleName)])
+        try await v2Or({ try await v2.perform(.post, "/events/\(ApiV2.segment(eventId))/duties", body: ["roleName": .string(roleName)]) },
+                       { try await api.perform(.post, "/api/events/\(segment(eventId))/duties", body: ["roleName": .string(roleName)]) })
     }
 }

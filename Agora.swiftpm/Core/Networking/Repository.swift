@@ -20,6 +20,9 @@ struct EventInput: Sendable {
     var recurringRule = "weekly"
     var recurringCount = 4
     var duties: [String] = []
+    /// Made by someone who manages events: only they send the kind, pinning and repetition (API v2 refuses them from
+    /// anyone else).
+    var managed = false
 }
 
 /// How approving or rejecting a request ended.
@@ -178,8 +181,13 @@ final class Repository: Sendable {
         try await api.perform(.patch, "/api/db", body: ["path": .string("users/\(user.userId)"), "value": ["timeZone": .string(zone)]])
     }
 
-    func calendarFeed() async throws -> CalendarFeed { try await api.get("/api/user/calendar-feed") }
-    func resetCalendarFeed() async throws -> CalendarFeed { try await api.send(.post, "/api/user/calendar-feed/reset") }
+    func calendarFeed() async throws -> CalendarFeed {
+        try await v2Or({ try await v2.call(.get, "/calendar-feed") }, { try await api.get("/api/user/calendar-feed") })
+    }
+
+    func resetCalendarFeed() async throws -> CalendarFeed {
+        try await v2Or({ try await v2.call(.post, "/calendar-feed/reset") }, { try await api.send(.post, "/api/user/calendar-feed/reset") })
+    }
 
     func inviteCode() async -> String? {
         guard let value: JSONValue = try? await api.get("/api/db", query: ["path": "system/inviteCode"]) else { return nil }
@@ -209,7 +217,10 @@ final class Repository: Sendable {
         try await api.perform(.put, "/api/db", body: ["path": "settings", "value": current])
     }
 
-    func groups() async -> [MemberGroup] { (try? await api.get("/api/groups", as: LossyList<MemberGroup>.self).items) ?? [] }
+    func groups() async -> [MemberGroup] {
+        (try? await v2Or({ try await v2.all("/groups", of: MemberGroup.self).items },
+                         { try await api.get("/api/groups", as: LossyList<MemberGroup>.self).items })) ?? []
+    }
 
     // MARK: Finances (member)
 
@@ -581,68 +592,171 @@ final class Repository: Sendable {
 
     // MARK: Events
 
-    func events() async throws -> [AgoraEvent] { try await api.get("/api/events", as: LossyList<AgoraEvent>.self).items }
-    func myDutyRequests() async throws -> [DutyRequest] { try await api.get("/api/events/my-requests", as: LossyList<DutyRequest>.self).items }
-    func eventSettings() async -> EventSettings { (try? await api.get("/api/events/settings")) ?? EventSettings() }
-    func attendees(eventId: String) async throws -> Attendees { try await api.get("/api/events/\(eventId)/attendees") }
-    func candidates() async throws -> Candidates { try await api.get("/api/events/candidates") }
+    /// A value of v2 in the old API's shape (V2Calendar) read as the app's model.
+    private func model<T: Decodable>(_ value: JSONValue, as type: T.Type = T.self) throws -> T {
+        try api.decoder.decode(T.self, from: api.encoder.encode(value))
+    }
+
+    func events() async throws -> [AgoraEvent] {
+        try await v2Or({
+            try await v2.all("/events", of: JSONValue.self).items.compactMap { try? model(V2Calendar.event($0), as: AgoraEvent.self) }
+        }, { try await api.get("/api/events", as: LossyList<AgoraEvent>.self).items })
+    }
+
+    func myDutyRequests() async throws -> [DutyRequest] {
+        try await v2Or({
+            try await v2.all("/duty-requests", of: JSONValue.self).items.compactMap { try? model(V2Calendar.dutyRequest($0), as: DutyRequest.self) }
+        }, { try await api.get("/api/events/my-requests", as: LossyList<DutyRequest>.self).items })
+    }
+
+    /// CALDERA has no such setting any more: every member may create events (as through v2, like Android).
+    func eventSettings() async -> EventSettings {
+        if v2.available { return EventSettings() }
+        return (try? await api.get("/api/events/settings")) ?? EventSettings()
+    }
+
+    func attendees(eventId: String) async throws -> Attendees {
+        try await v2Or({
+            try model(V2Calendar.attendees(try await v2.all("/events/\(ApiV2.segment(eventId))/participants", of: JSONValue.self).items))
+        }, { try await api.get("/api/events/\(eventId)/attendees") })
+    }
+
+    func candidates() async throws -> Candidates {
+        try await v2Or({
+            async let people = v2.all("/people", of: JSONValue.self).items
+            async let groups = v2.all("/groups", of: JSONValue.self).items
+            return try model(V2Calendar.candidates(people: try await people, groups: try await groups))
+        }, { try await api.get("/api/events/candidates") })
+    }
 
     func register(eventId: String, _ register: Bool) async throws {
-        try await api.perform(.post, "/api/events/\(eventId)/register", body: ["action": .string(register ? "register" : "cancel")])
+        try await v2Or({
+            try await v2.perform(register ? .put : .delete, "/events/\(ApiV2.segment(eventId))/registration")
+        }, {
+            try await api.perform(.post, "/api/events/\(eventId)/register", body: ["action": .string(register ? "register" : "cancel")])
+        })
     }
 
     /// Members by account id, guests (server v3.2+) by "guest:<id>".
     func removeAttendee(eventId: String, userId: String) async throws {
-        try await api.perform(.delete, "/api/events/\(eventId)/attendees/\(userId)")
+        try await v2Or({
+            try await v2.perform(.delete, "/events/\(ApiV2.segment(eventId))/participants/\(ApiV2.segment(userId))")
+        }, { try await api.perform(.delete, "/api/events/\(eventId)/attendees/\(userId)") })
     }
 
     /// The share switch: whether people without an account may open the event's link (only its editors).
     func setEventPublic(eventId: String, _ isPublic: Bool) async throws {
-        try await api.perform(.patch, "/api/events/\(eventId)", body: ["isPublic": .bool(isPublic)])
+        try await v2Or({
+            try await v2.perform(.patch, "/events/\(ApiV2.segment(eventId))", body: ["isPublic": .bool(isPublic)])
+        }, { try await api.perform(.patch, "/api/events/\(eventId)", body: ["isPublic": .bool(isPublic)]) })
     }
 
     func respondToDuty(id: String, accept: Bool) async throws {
-        try await api.perform(.post, "/api/events/duties/\(id)/respond", body: ["action": .string(accept ? "accept" : "decline")])
+        try await v2Or({
+            try await v2.perform(.post, "/duties/\(ApiV2.segment(id))/answer", body: ["answer": .string(accept ? "accept" : "decline")])
+        }, { try await api.perform(.post, "/api/events/duties/\(id)/respond", body: ["action": .string(accept ? "accept" : "decline")]) })
     }
 
+    /// Takes an open duty (or one asked of oneself) / gives it back.
     func claimDuty(id: String, claim: Bool) async throws {
-        try await api.perform(.post, "/api/events/duties/\(id)/claim", body: claim ? [:] : ["action": "unclaim"])
+        try await v2Or({
+            try await v2.perform(claim ? .put : .delete, "/duties/\(ApiV2.segment(id))/claim")
+        }, { try await api.perform(.post, "/api/events/duties/\(id)/claim", body: claim ? [:] : ["action": "unclaim"]) })
     }
 
     func cancelDutyRequest(id: String) async throws {
-        try await api.perform(.post, "/api/events/duties/\(id)/cancel-request")
+        try await v2Or({ try await v2.perform(.delete, "/duties/\(ApiV2.segment(id))/request") },
+                       { try await api.perform(.post, "/api/events/duties/\(id)/cancel-request") })
     }
 
+    /// A duty asked of a person ([userId]: by push and e-mail), given to a group ([groupId]) or open.
     func addDuty(eventId: String, roleName: String, section: String = "", userId: String? = nil, groupId: String? = nil) async throws {
-        var body: JSONValue = ["roleName": .string(roleName), "sendEmail": true]
-        if !section.isEmpty { body["section"] = .string(section) }
-        if let userId { body["targetUserId"] = .string(userId) }
-        if let groupId { body["targetGroupId"] = .string(groupId) }
-        try await api.perform(.post, "/api/events/\(eventId)/duties", body: body)
+        try await v2Or({
+            var body: JSONValue = ["roleName": .string(roleName), "sendEmail": true]
+            if !section.isEmpty { body["section"] = .string(section) }
+            if let userId { body["requestedUserId"] = .string(userId) }
+            if let groupId { body["assignedGroupId"] = .string(groupId) }
+            try await v2.perform(.post, "/events/\(ApiV2.segment(eventId))/duties", body: body)
+        }, {
+            var body: JSONValue = ["roleName": .string(roleName), "sendEmail": true]
+            if !section.isEmpty { body["section"] = .string(section) }
+            if let userId { body["targetUserId"] = .string(userId) }
+            if let groupId { body["targetGroupId"] = .string(groupId) }
+            try await api.perform(.post, "/api/events/\(eventId)/duties", body: body)
+        })
     }
 
+    /// Gives a duty to a group or asks a person.
     func assignDuty(id: String, userId: String?, groupId: String?) async throws {
-        var body: JSONValue = ["sendEmail": true]
-        if let userId { body["targetUserId"] = .string(userId) }
-        if let groupId { body["targetGroupId"] = .string(groupId) }
-        try await api.perform(.post, "/api/events/duties/\(id)/assign", body: body)
+        try await v2Or({
+            var body: JSONValue = ["sendEmail": true]
+            if let userId { body["userId"] = .string(userId) }
+            if let groupId { body["groupId"] = .string(groupId) }
+            try await v2.perform(.post, "/duties/\(ApiV2.segment(id))/assignment", body: body)
+        }, {
+            var body: JSONValue = ["sendEmail": true]
+            if let userId { body["targetUserId"] = .string(userId) }
+            if let groupId { body["targetGroupId"] = .string(groupId) }
+            try await api.perform(.post, "/api/events/duties/\(id)/assign", body: body)
+        })
     }
 
     func updateDutyNotes(id: String, notes: String) async throws {
-        try await api.perform(.patch, "/api/events/duties/\(id)", body: ["notes": .string(notes)])
+        try await v2Or({ try await v2.perform(.patch, "/duties/\(ApiV2.segment(id))", body: ["notes": .string(notes)]) },
+                       { try await api.perform(.patch, "/api/events/duties/\(id)", body: ["notes": .string(notes)]) })
     }
 
     func deleteDuty(id: String) async throws {
-        try await api.perform(.delete, "/api/events/duties/\(id)")
+        try await v2Or({ try await v2.perform(.delete, "/duties/\(ApiV2.segment(id))") },
+                       { try await api.perform(.delete, "/api/events/duties/\(id)") })
     }
 
     func uploadEventImage(jpeg: Data) async throws -> String {
-        let response: UploadResponse = try await api.upload("/api/events/upload-image",
-                                                            file: .init(field: "image", fileName: "cover.jpg", mimeType: "image/jpeg", data: jpeg))
-        return response.url
+        let file = APIClient.FilePart(field: "image", fileName: "cover.jpg", mimeType: "image/jpeg", data: jpeg)
+        return try await v2Or({
+            let image: JSONValue = try await v2.upload("/events/images", file: file)
+            return image["url"]?.text ?? ""
+        }, {
+            let response: UploadResponse = try await api.upload("/api/events/upload-image", file: file)
+            return response.url
+        })
     }
 
+    /// A new event ([existingId] nil: with its duties – every date of a series gets them) or a change of one.
+    /// Appointments, pinned and repeated events are for those who manage events.
     func saveEvent(id existingId: String?, _ input: EventInput) async throws {
+        try await v2Or({ try await saveEventV2(id: existingId, input) }, { try await saveEventOld(id: existingId, input) })
+    }
+
+    private func saveEventV2(id existingId: String?, _ input: EventInput) async throws {
+        var body: JSONValue = [
+            "title": .string(input.title.trimmingCharacters(in: .whitespaces)),
+            "date": .string(input.date), "endDate": .string(input.endDate),
+            "startTime": .string(input.startTime), "endTime": .string(input.endTime),
+            "location": .string(input.location.trimmingCharacters(in: .whitespaces)),
+            "description": .string(input.description.trimmingCharacters(in: .whitespacesAndNewlines)),
+            "requiresRegistration": .bool(input.requiresRegistration),
+            "minParticipants": .of(input.minParticipants), "maxParticipants": .of(input.maxParticipants),
+            "targetGroups": .of(input.targetGroups), "imageUrl": .string(input.imageUrl)
+        ]
+        if input.managed {
+            body["kind"] = .string(input.eventType)
+            body["isPinned"] = .bool(input.isPinned)
+        }
+        if existingId == nil {
+            if input.isRecurring, input.managed {
+                body["recurrence"] = ["rule": .string(input.recurringRule), "count": .of(input.recurringCount)]
+            }
+            if !input.duties.isEmpty { body["duties"] = .array(input.duties.map { ["roleName": .string($0)] }) }
+        }
+        if let existingId {
+            try await v2.perform(.patch, "/events/\(ApiV2.segment(existingId))", body: body)
+        } else {
+            try await v2.perform(.post, "/events", body: body)
+        }
+    }
+
+    private func saveEventOld(id existingId: String?, _ input: EventInput) async throws {
         var body: JSONValue = [
             "title": .string(input.title.trimmingCharacters(in: .whitespaces)),
             "date": .string(input.date), "endDate": .string(input.endDate),
@@ -670,7 +784,8 @@ final class Repository: Sendable {
     }
 
     func deleteEvent(id: String) async throws {
-        try await api.perform(.delete, "/api/events/\(id)")
+        try await v2Or({ try await v2.perform(.delete, "/events/\(ApiV2.segment(id))") },
+                       { try await api.perform(.delete, "/api/events/\(id)") })
     }
 
     // MARK: Mentoring

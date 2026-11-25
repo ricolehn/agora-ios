@@ -250,6 +250,7 @@ struct EventEditView: View {
                 final.endTime = ""
             }
         }
+        final.managed = isManager
         if !(isManager && final.eventType == "event") { final.isPinned = false }
         if !isManager && eventId == nil { final.eventType = "event" }
         if !final.requiresRegistration {
