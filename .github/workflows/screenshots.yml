@@ -14,9 +14,10 @@ on:
   push:
     branches: ["claude/**"]
 
+# A push waits for the running set of screenshots instead of stopping it (only the newest waiting one runs)
 concurrency:
   group: screenshots-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   screenshots:
