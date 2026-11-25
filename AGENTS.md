@@ -27,6 +27,9 @@ confirmation dialogs, the share sheet). When the clients differ, the web app dec
 1. **Records are written whole and like the web app.** People, requests, donations and expenses are read and written
    as `JSONValue`, so fields the app does not know survive. Never write a partial record or a new field the web app
    does not write. Write flows live in `Core/Networking/Repository.swift`, their pure rules in `Core/Domain`.
+   **API v2 first:** where the server offers every v2 resource the app uses (`ApiV2.needed`, asked by
+   `Repository.checkServer`), every call goes through v2 – `v2Or(new, old)` – and falls back to the old API on older
+   servers, like Android. A record read through v2 (a `Person` with `memberId`) is changed through v2 only.
 2. **Money.** Amounts people type go through `Amount.typed` (strict, refuses "1.500"); stored amounts through
    `JSONValue.amount` / `Amount.parse` (lenient, legacy formats). Approving a request goes through
    `Repository.approveRequest`: pending check, `RequestBookings` (booking id `req_<request id>`), roll-back on `409`.
@@ -50,6 +53,7 @@ confirmation dialogs, the share sheet). When the clients differ, the web app dec
 | Entry, tabs, navigation | `App/AgoraApp.swift`, `App/MainShell.swift`, `App/Router.swift` | `MainActivity.kt`, `ui/AgoraApp.kt` |
 | HTTP, SSE, uploads | `Core/Networking/APIClient.swift` | `data/remote/AgoraApi.kt` |
 | Endpoints, write flows | `Core/Networking/Repository.swift`, `ExtrasRepository.swift` | `data/AgoraRepository.kt`, `data/SongbookApi.kt`, `PrayersApi.kt`, `ProgramApi.kt` |
+| API v2 (CALDERA) | `Core/Networking/ApiV2.swift`, `BooksV2.swift`; `Core/Models/V2Models.swift`, `V2Calendar.swift`, `V2Community.swift` | `data/remote/ApiV2.kt`, `data/FinanceV2.kt`, `CalendarV2.kt`, `CommunityV2.kt`, `AccountV2.kt`, `data/model/V2*.kt` |
 | Session, cache, live updates | `Core/Store/AppStore.swift`, `Core/Store/SessionStore.swift` | `data/AppStore.kt`, `data/local/*` |
 | Models | `Core/Models/Models.swift`, `ExtrasModels.swift` | `data/model/Models.kt`, `Serializers.kt` |
 | Money rules | `Core/Domain/FinanceRules.swift`, `Core/Support/JSONValue.swift` (`Amount`) | `RequestBookings`, `StandingOrders`, `StatusHistory` in `data/AgoraRepository.kt`; `parseTypedAmount` in `Serializers.kt` |

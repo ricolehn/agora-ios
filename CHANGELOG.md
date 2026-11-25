@@ -26,6 +26,16 @@ all members. Compiles on CI and passes the logic tests; not yet tested on a devi
   answer. The line above a reply says what the AI is doing (its thought, or "Schlägt Ausgaben 2019–2024 nach") and
   afterwards "Nachgedacht · 2× nachgeschlagen"; a tap opens the steps with what each lookup found.
 
+**API v2**
+- Like Android 1.4, the app goes through the server's API v2 wherever the server offers all of it (CALDERA), and
+  through the old API on older servers: the books, requests, the calendar with its duty roster, the own account,
+  songbook, prayer requests and mentoring. Signing in, live updates and the AI stay with the old API.
+- Requests are decided and booked in one step on the server – once, also when two treasurers approve at the same
+  moment; an approval and a rejection at the same moment cannot both pass.
+- A standing order books its months up to today at once; every change names the version it is based on.
+- Checked against a CALDERA server with the app's own code: every read shows the same through both APIs (for member,
+  treasurer, event manager, mentor, mentoring manager and admin), and every change works through v2.
+
 **App**
 - Server messages come in German (`Accept-Language`), API v2's error shape is understood, and a server that is
   starting or upgrading its database says "Bitte gleich noch einmal versuchen" instead of "nicht erreichbar".

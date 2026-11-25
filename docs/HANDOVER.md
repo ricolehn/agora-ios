@@ -106,38 +106,30 @@ makes at start answer through the old API, which CALDERA keeps for every app ver
 state is right: the server applies fees over time and fresh starts to `_paidUntil` / `_overdueAmount`, and the app's
 own `Formats.paidUntilMonth` gives the server's month for all 56 members (in three time zones).
 
-**Work list, most important first** (Android commit hashes in brackets)
+**Done on the branch `claude/ios-extended-work`** (November 2026; each checked as the changelog says – on CI with
+Xcode, with the logic tests, and with the app's own networking code compiled on Linux against a CALDERA server):
+donations and expenses written with their list's version (four of five parallel donations were lost before); German
+server messages, v2's error shape and a starting server; the fresh start and the server's monthly fee; the event
+editor's minimum; Android 1.3.1's security fixes; the AI's lookups and thinking line; and **API v2 with the old API as
+fallback**, all or nothing like Android (`ApiV2.swift`, `BooksV2.swift`, `V2Models.swift`, `V2Calendar.swift`,
+`V2Community.swift`): every read showed the same through both APIs for six roles, every write works through v2,
+including a request approved on two devices at once (booked once) and approve against reject (one wins, the booking
+follows), and standing orders book their months up to today at once.
 
-1. *Writes that can lose money* (old API, also for servers before CALDERA):
-   - Donations and expenses are written as a whole list without a version: an entry the web or Android adds between
-     the read and the write is lost. CALDERA takes `POST /api/db/transaction {path:"donations"|"expenses",
-     currentVersion}` (read with `raw=1`, 409 when changed); older servers answer 400, keep the plain write there
-     (`0ff6cd1`).
-   - An approved standing order (and `bookPayment(standingOrder:)`) books the months up to today only with the
-     server's nightly run; the member looks overdue until then. The web books them when a treasurer loads; v2 at once.
-2. *Server answers:* send `Accept-Language: de`; read v2's error shape `{error:{code,message,field}}`; a starting or
-   upgrading server answers 503 `{starting:true}` with `Retry-After` – say "gleich noch einmal versuchen" and retry
-   instead of showing an error (`e3ec785`, `7e380b6`, `strings_server.xml`).
-3. *Fees (CALDERA):* show `_monthlyFee`, the fresh start (`_feeReset`, `_feeCarriedOver`, `_feeWrittenOff`: chip
-   "Neustart am …" for 60 days, marker in the history, hint for payments dated before it) and the fees page with its
-   history, planned change, preview and version (`/api/fees`, `/api/admin/fees*`, `/api/fee-reset*`; Android
-   `FeeLogic.kt` + `FeeLogicTest`, `ui/settings/FeeSettings.kt`; `7e47895`). The current page still works – the
-   server reads it as "these fees from this month on" – but shows no history and no preview.
-4. *Event editor:* refuse a minimum above the places ("Die Mindestzahl kann nicht höher als die Plätze sein.") and
-   show "noch 2 nötig (mind. 5)" / "Mindestzahl 5 erreicht"; the server refuses it now.
-5. *Security (Android 1.3.1, `c7cfbb2`):* Markdown links only `http(s)`, `mailto`, `tel`; exported reports deleted on
-   sign-out; the calendar subscription opened only as `webcal(s)` / `https`.
-6. *AI chat:* the stream carries `lookup` / `lookupDone` steps and `: ping`; text written before a lookup is a note,
-   not part of the answer; the thinking line and its steps (Android `AiReply.kt` + `AiReplyTest`, web
-   `assets/aiReply.js`). Port the regexes without Java-only flags: ICU refuses `(?U)` (`c6bf223`).
-7. *API v2* with the old API as fallback, all or nothing like Android (`ApiV2.kt`, `ApiV2Test`): the books and
-   requests (one-step `POST /requests/:id/decision {book:true}` instead of the client's booking), history edit and
-   delete for finance managers (`Bookings`, `BookingsTest`), calendar, account, songbook, prayers, mentoring.
-8. *Live updates:* `songs`, `prayers`, `polls` and `media` reload only their pages, not all members; profile pictures
-   with versions (`/api/profile/pictures`).
-9. *Media library* (Extras, Nextcloud): new for iOS (`MediaApi.kt`, `MediaLogic.kt` + `MediaLogicTest`, web
-   `assets/media.js`).
-10. *Look:* Extras as rows with 3D motifs, the AI's sign in lagoon and sand (`1ccacba`, `7283f29`).
+**Still open, most important first** (Android commit hashes in brackets)
+
+1. *Fees page (CALDERA):* the fees over time with history, planned change, preview and version, and setting or taking
+   back a fresh start (`/api/v2/fees*`, `/api/v2/fresh-starts*`; Android `ui/settings/FeeSettings.kt`, `FeeLogic.kt` +
+   `FeeLogicTest`; `7e47895`). The current page still works – the server reads it as "these fees from this month on".
+2. *History edit and delete* for finance managers (`Bookings`, `BookingsTest`, `0ff6cd1`; v2 `PATCH`/`DELETE` of
+   payments, donations and expenses with their versions).
+3. *Live updates:* `songs`, `prayers`, `polls` and `media` reload only their pages, not all members; profile pictures
+   with versions (`/api/v2/pictures`).
+4. *Media library* (Extras, Nextcloud): new for iOS (`MediaApi.kt`, `MediaLogic.kt` + `MediaLogicTest`, web
+   `assets/media.js`). When it comes, add the media resources to `ApiV2.needed` as Android has them.
+5. *Look:* Extras as rows with 3D motifs, the AI's sign in lagoon and sand (`1ccacba`, `7283f29`).
+6. *Small:* the login error "Failed to authenticate." comes from PocketBase in English; the payment hint before a fresh
+   start also belongs into the treasurer's request sheet (Android `FinanceSheets.kt`).
 
 ## Open compared with Android
 
