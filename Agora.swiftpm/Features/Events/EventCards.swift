@@ -49,7 +49,7 @@ struct RegistrationCard: View {
         } else {
             parts.append(String(localized: "\(event.registeredCount) angemeldet"))
         }
-        if event.minParticipants > 0 { parts.append(String(localized: "mind. \(event.minParticipants)")) }
+        if let minimum = EventRules.minimumText(minimum: event.minParticipants, registered: event.registeredCount) { parts.append(minimum) }
         return parts.joined(separator: " · ")
     }
 

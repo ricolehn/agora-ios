@@ -29,6 +29,19 @@ enum EventRules {
             || event.duties.contains { $0.roleName.localizedCaseInsensitiveContains(needle) }
     }
 
+    /// A minimum above the places is refused by the server (CALDERA): said in the editor before anything is sent.
+    static func minimumAbovePlaces(requiresRegistration: Bool, minimum: Int, places: Int) -> Bool {
+        requiresRegistration && places > 0 && minimum > places
+    }
+
+    /// The minimum on the registration line: "Mindestzahl 5 erreicht" or "noch 2 nötig (mind. 5)" (members and guests
+    /// count alike, like the web and Android); nil without a minimum.
+    static func minimumText(minimum: Int, registered: Int) -> String? {
+        guard minimum > 0 else { return nil }
+        if registered >= minimum { return String(localized: "Mindestzahl \(minimum) erreicht") }
+        return String(localized: "noch \(minimum - registered) nötig (mind. \(minimum))")
+    }
+
     /// Events tab: real events and pinned highlights.
     static func showsInEvents(_ event: AgoraEvent) -> Bool { !event.isTermin || event.isPinned }
 

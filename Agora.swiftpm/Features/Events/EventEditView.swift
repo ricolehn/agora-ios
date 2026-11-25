@@ -233,6 +233,11 @@ struct EventEditView: View {
             error = String(localized: "Titel ist erforderlich")
             return
         }
+        if EventRules.minimumAbovePlaces(requiresRegistration: input.requiresRegistration, minimum: input.minParticipants,
+                                         places: input.maxParticipants) {
+            error = String(localized: "Die Mindestzahl kann nicht höher als die Plätze sein.")
+            return
+        }
         var final = input
         if multiDay {
             final.startTime = ""

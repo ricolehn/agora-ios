@@ -3,6 +3,19 @@ import Foundation
 /// Event rules shared with the web app (assets/app.js) and Android (LogicTest.kt).
 enum EventTests {
     static let all: [TestCase] = [
+        TestCase("a minimum above the places is refused before saving, like the server (CALDERA)") {
+            expect(EventRules.minimumAbovePlaces(requiresRegistration: true, minimum: 6, places: 5))
+            expect(!EventRules.minimumAbovePlaces(requiresRegistration: true, minimum: 5, places: 5))
+            // No limit on the places, or no registration: any minimum is fine
+            expect(!EventRules.minimumAbovePlaces(requiresRegistration: true, minimum: 6, places: 0))
+            expect(!EventRules.minimumAbovePlaces(requiresRegistration: false, minimum: 6, places: 5))
+        },
+        TestCase("the registration line says how many are still needed or that the minimum is reached") {
+            expectNil(EventRules.minimumText(minimum: 0, registered: 3))
+            expectEqual(EventRules.minimumText(minimum: 5, registered: 3), "noch 2 nötig (mind. 5)")
+            expectEqual(EventRules.minimumText(minimum: 5, registered: 5), "Mindestzahl 5 erreicht")
+            expectEqual(EventRules.minimumText(minimum: 5, registered: 9), "Mindestzahl 5 erreicht")
+        },
         TestCase("share links are the web app's addresses") {
             // Expected links were produced by the web app's slugify / itemSlug / encodeURIComponent (assets/app.js)
             let events = [
