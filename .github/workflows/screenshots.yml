@@ -91,6 +91,8 @@ jobs:
           mkdir -p shots/logs
           cp "$RUNNER_TEMP/build.log" shots/logs/ 2>/dev/null || true
           cp "$RUNNER_TEMP/server/server.log" "$RUNNER_TEMP/server/pocketbase.log" shots/logs/ 2>/dev/null || true
+          # Crash reports of the app, also of a device step that ran out of time
+          find "$HOME/Library/Logs/DiagnosticReports" -iname "*Agora*" -exec cp {} shots/logs/ \; 2>/dev/null || true
           find shots -name "*.png" | sort
 
       - name: Upload the screenshots

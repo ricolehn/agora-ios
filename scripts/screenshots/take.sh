@@ -10,7 +10,8 @@ set -uo pipefail
 app="$1"
 device_regex="$2"
 appearance="$3"
-out="$4"
+# Absolute: simctl resolves the app's log paths itself (a relative one made every launch fail)
+out="$(mkdir -p "$4" && cd "$4" && pwd)"
 filter="${5:-.}"
 here="$(cd "$(dirname "$0")" && pwd)"
 bundle="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
@@ -28,8 +29,11 @@ print(rs[-1]["identifier"] if rs else "")')"
 devtype="$(xcrun simctl list devicetypes -j | python3 -c '
 import json, re, sys
 types = json.load(sys.stdin)["devicetypes"]
+def model(name):
+    # "iPhone 17 Pro" -> 17, "iPad Pro 13-inch (M5)" -> 13 and 5: the newest has the highest numbers
+    return [int(n) for n in re.findall(r"\d+", name)]
 for alternative in sys.argv[1].split("||"):
-    matches = [t for t in types if re.search(alternative, t["name"])]
+    matches = sorted((t for t in types if re.search(alternative, t["name"])), key=lambda t: model(t["name"]))
     if matches:
         print(matches[-1]["identifier"] + "\t" + matches[-1]["name"]); break' "$device_regex")"
 if [ -z "$runtime" ] || [ -z "$devtype" ]; then
@@ -84,7 +88,8 @@ while IFS='|' read -r name account stage tab route pill; do
   SIMCTL_CHILD_AGORA_SHOT_EMAIL="$(account_email "$account")" SIMCTL_CHILD_AGORA_SHOT_PASSWORD="$password" \
   SIMCTL_CHILD_AGORA_SHOT_TAB="$tab" SIMCTL_CHILD_AGORA_SHOT_ROUTE="$route" SIMCTL_CHILD_AGORA_SHOT_PILL="$pill" \
     limit 60 xcrun simctl launch --terminate-running-process --stdout="$log" --stderr="$log" "$udid" "$bundle" \
-      -AppleLanguages "(de)" -AppleLocale de_DE >/dev/null
+      -AppleLanguages "(de)" -AppleLocale de_DE >"$out/launch-$name.txt" 2>&1 \
+    || echo "::warning::$name: launch failed: $(tr '\n' ' ' < "$out/launch-$name.txt")"
   # Until the driver says it is done (at most 40 s), then time for pictures and animations
   for _ in $(seq 1 80); do grep -q -e "AGORA_SHOT ready" -e "AGORA_SHOT failed" "$log" 2>/dev/null && break; sleep 0.5; done
   sleep 3
