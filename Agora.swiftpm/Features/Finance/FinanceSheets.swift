@@ -79,7 +79,11 @@ struct BookPaymentSheet: View {
             } header: {
                 Text(person.name)
             } footer: {
-                if standingOrder { Text("Ab dem Startdatum wird der Betrag jeden Monat automatisch gebucht.") }
+                if standingOrder {
+                    Text("Ab dem Startdatum wird der Betrag jeden Monat automatisch gebucht.")
+                } else {
+                    FeeResetNote(text: FeeResetNote.paymentHint(person, day: date)).padding(.top, 4)
+                }
             }
         }
     }

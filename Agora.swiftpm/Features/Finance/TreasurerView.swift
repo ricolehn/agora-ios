@@ -474,7 +474,7 @@ struct PersonCard: View {
             if expanded {
                 VStack(alignment: .leading, spacing: 12) {
                     Hairline().padding(.horizontal, -14)
-                    PersonStatusHero(person: shown, rate: store.data.fees.rate(for: shown.effectiveStatus), showDetails: true, compact: true)
+                    PersonStatusHero(person: shown, rate: shown.monthlyFee(store.data.fees), showDetails: true, compact: true)
                     if canManage {
                         HStack(spacing: 8) {
                             MemberAction(title: "Zahlung erfassen", systemImage: "eurosign", color: Palette.success) { sheet = .payment }

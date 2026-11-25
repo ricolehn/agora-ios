@@ -167,14 +167,20 @@ enum RequestBookings {
     }
 }
 
-/// One line of the finance timeline ("Verlauf"): payments and status changes, newest first.
+/// One line of the finance timeline ("Verlauf"): payments, status changes and the fresh start, newest first.
 struct TimelineEntry: Identifiable, Hashable, Sendable {
-    enum Kind: Hashable, Sendable { case payment(amount: Double, note: String), status(String) }
+    enum Kind: Hashable, Sendable { case payment(amount: Double, note: String), status(String), freshStart }
 
     let id: String
     let date: String
     let kind: Kind
+    /// Below the fresh start: the settled time before it, shown quieter.
+    var settled = false
 
+    var isFreshStart: Bool { kind == .freshStart }
+
+    /// Like Android's `FeeLogic.timeline`: a fresh start is a marked point on the line; on its day it comes below that
+    /// day's entries (they belong to the new account), and the entries below it are the settled time before it.
     static func build(for person: Person) -> [TimelineEntry] {
         var entries: [TimelineEntry] = []
         for (index, item) in person.statusHistory.enumerated() where !item.startDate.isEmpty {
@@ -190,6 +196,51 @@ struct TimelineEntry: Identifiable, Hashable, Sendable {
         for (index, payment) in person.payments.enumerated() where !payment.date.isEmpty {
             entries.append(TimelineEntry(id: "p\(index)-\(payment.id)", date: payment.date, kind: .payment(amount: payment.amount, note: payment.description)))
         }
-        return entries.sorted { $0.date > $1.date }
+        // A history without entries stays empty (the screen says so), as on the web
+        guard let reset = FeeRules.validDay(person.feeReset), !entries.isEmpty else { return entries.sorted { $0.date > $1.date } }
+        entries.append(TimelineEntry(id: "fresh-start", date: reset, kind: .freshStart))
+        var sorted = entries.sorted { $0.date != $1.date ? $0.date > $1.date : (!$0.isFreshStart && $1.isFreshStart) }
+        if let at = sorted.firstIndex(where: \.isFreshStart) {
+            for index in sorted.indices where index > at { sorted[index].settled = true }
+        }
+        return sorted
+    }
+}
+
+/// What the app decides itself about the fees over time and the fresh start (CALDERA), like Android's `FeeLogic` and
+/// the web app: everything calculated about the accounts comes from the server, these only decide what is shown.
+enum FeeRules {
+    /// How long the member card names a fresh start: a notice, not a fixture – the history keeps the day for good.
+    static let newsDays = 60
+
+    /// 'YYYY-MM-DD' that is a real day, else nil.
+    static func validDay(_ value: String?) -> String? {
+        guard let value, value.count == 10, value.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil,
+              Day.date(value) != nil else { return nil }
+        return value
+    }
+
+    /// True while the fresh start on [resetDay] is news on [today]: from its day on for 60 days. A day still to come only
+    /// shows on a device whose clock is behind – and counts as news.
+    static func isNews(_ resetDay: String?, today: String) -> Bool {
+        guard let reset = validDay(resetDay).flatMap(Day.date), let now = validDay(today).flatMap(Day.date) else { return false }
+        let days = Calendar(identifier: .gregorian).dateComponents([.day], from: reset, to: now).day ?? 0
+        return days < newsDays
+    }
+
+    /// The dropped fees a payment dated [paymentDay] first makes up for before it becomes credit, or 0: a payment dated
+    /// before the fresh start belongs to the time before it.
+    static func droppedFeesBefore(_ person: Person?, paymentDay: String?) -> Double {
+        guard let person, let reset = validDay(person.feeReset), let day = validDay(paymentDay), day < reset else { return 0 }
+        return max(0, person.feeWrittenOff)
+    }
+
+    enum ResetOutcome: Equatable { case carriedOver, dropped, even }
+
+    /// What happened to a member's fee account on its fresh start.
+    static func resetOutcome(_ person: Person) -> ResetOutcome {
+        if person.feeCarriedOver > 0 { return .carriedOver }
+        if person.feeWrittenOff > 0 { return .dropped }
+        return .even
     }
 }

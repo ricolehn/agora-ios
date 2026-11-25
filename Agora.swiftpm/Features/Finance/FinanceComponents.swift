@@ -24,7 +24,7 @@ struct FinanceStatusCard: View {
             }
             .card(padding: 22)
         } else if let person {
-            PersonStatusHero(person: person, rate: store.data.fees.rate(for: person.effectiveStatus), showDetails: showDetails, onStatusTap: onStatusTap)
+            PersonStatusHero(person: person, rate: person.monthlyFee(store.data.fees), showDetails: showDetails, onStatusTap: onStatusTap)
         } else {
             Text("Kein Mitgliedseintrag gefunden. Bitte kontaktieren Sie einen Administrator.")
                 .font(.system(size: 15))
@@ -108,6 +108,16 @@ struct PersonStatusHero: View {
                     .disabled(onStatusTap == nil)
                     .accessibilityHint(onStatusTap == nil ? "" : "Statusänderung beantragen")
                 }
+                // A fresh start of the fee account is news for about two months; the history keeps the day for good
+                if let reset = person.feeReset, FeeRules.isNews(reset, today: Day.today()) {
+                    chip {
+                        Image(systemName: FeeResetNote.symbol).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.warning)
+                        (Text("Neustart am ") + Text(Formats.shortDay(reset)).bold().foregroundColor(Palette.text))
+                            .font(.system(size: 14))
+                            .foregroundStyle(Palette.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
             }
         }
         .padding(compact ? 16 : 18)
@@ -146,16 +156,25 @@ struct FinanceTimeline: View {
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     HStack(alignment: .top, spacing: 12) {
                         VStack(spacing: 4) {
-                            Circle()
-                                .fill(isPayment(entry) ? Palette.primary : Palette.indigo)
-                                .frame(width: 11, height: 11)
-                                .overlay(Circle().strokeBorder(Palette.surface, lineWidth: 2))
-                                .padding(.top, 4)
+                            if entry.isFreshStart {
+                                Image(systemName: FeeResetNote.symbol)
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 18, height: 18)
+                                    .background(Palette.warning, in: Circle())
+                                    .padding(.top, 1)
+                            } else {
+                                Circle()
+                                    .fill(isPayment(entry) ? Palette.primary : Palette.indigo)
+                                    .frame(width: 11, height: 11)
+                                    .overlay(Circle().strokeBorder(Palette.surface, lineWidth: 2))
+                                    .padding(.top, 4)
+                            }
                             if index < entries.count - 1 {
                                 Rectangle().fill(Palette.borderLight).frame(width: 2).frame(maxHeight: .infinity)
                             }
                         }
-                        .frame(width: 14)
+                        .frame(width: 18)
                         VStack(alignment: .leading, spacing: 2) {
                             switch entry.kind {
                             case .payment(let amount, let note):
@@ -165,8 +184,14 @@ struct FinanceTimeline: View {
                             case .status(let status):
                                 Text("Statusänderung: \(plainStatus ? MemberStatus.name(status) : MemberStatus.label(status))").font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.text)
                                 Text("Gültig ab \(Formats.shortDay(entry.date))").font(.system(size: 13)).foregroundStyle(Palette.textSecondary)
+                            case .freshStart:
+                                Text("Neustart").font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.warning)
+                                Text("\(freshStartOutcome) · \(Formats.shortDay(entry.date))")
+                                    .font(.system(size: 13)).foregroundStyle(Palette.textSecondary)
                             }
                         }
+                        // The settled time before a fresh start stays, but quieter
+                        .opacity(entry.settled ? 0.55 : 1)
                         .padding(.bottom, index < entries.count - 1 ? 14 : 0)
                         .accessibilityElement(children: .combine)
                     }
@@ -178,6 +203,45 @@ struct FinanceTimeline: View {
     private func isPayment(_ entry: TimelineEntry) -> Bool {
         if case .payment = entry.kind { return true }
         return false
+    }
+
+    private var freshStartOutcome: String {
+        switch FeeRules.resetOutcome(person) {
+        case .carriedOver: return String(localized: "Guthaben übernommen: \(Formats.money(person.feeCarriedOver))")
+        case .dropped: return String(localized: "Rückstand gestrichen: \(Formats.money(person.feeWrittenOff))")
+        case .even: return String(localized: "Alles bezahlt")
+        }
+    }
+}
+
+/// A short note about a fresh start with its symbol, e.g. under the day of a payment dated before it (web:
+/// .fee-reset-note, Android `FeeResetNote`). Nothing without a text.
+struct FeeResetNote: View {
+    /// The symbol of a fresh start wherever one shows (web: the amber ↻).
+    static let symbol = "arrow.counterclockwise"
+
+    let text: String?
+
+    /// What a payment dated [day] does for [person] when it lies before their fresh start: it first pays off the open
+    /// fees dropped then. Nil when there is nothing to say.
+    static func paymentHint(_ person: Person?, day: String) -> String? {
+        let dropped = FeeRules.droppedFeesBefore(person, paymentDay: day)
+        guard dropped > 0, let reset = person?.feeReset else { return nil }
+        return String(localized: "Vor dem Neustart (\(Formats.shortDay(reset))): Das gleicht zuerst den alten Rückstand von \(Formats.money(dropped)) aus.")
+    }
+
+    var body: some View {
+        if let text, !text.isEmpty {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: Self.symbol).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.warning)
+                Text(text).font(.system(size: 13)).foregroundStyle(Palette.text).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Palette.warning.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.warning.opacity(0.28), lineWidth: 1))
+        }
     }
 }
 

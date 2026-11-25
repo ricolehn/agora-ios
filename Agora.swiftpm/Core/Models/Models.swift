@@ -394,6 +394,13 @@ struct Person: Codable, Hashable, Identifiable, Sendable {
     var overdueAmount = 0.0
     var currentStatus: String?
     var currentBalance = 0.0
+    /// The fresh start of the fee account (CALDERA): its day ('YYYY-MM-DD'), the credit carried over and the open fees
+    /// dropped on it. All from the server, nil / 0 without one or on older servers.
+    var feeReset: String?
+    var feeCarriedOver = 0.0
+    var feeWrittenOff = 0.0
+    /// This month's fee of the member as the server counts it (fees over time); nil on servers before CALDERA.
+    var monthlyFee: Double?
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
@@ -415,9 +422,16 @@ struct Person: Codable, Hashable, Identifiable, Sendable {
         overdueAmount = c.raw("_overdueAmount") != nil ? c.double("_overdueAmount") : c.double("overdueAmount")
         currentStatus = c.optionalString("_currentStatus") ?? c.optionalString("currentStatus")
         currentBalance = c.raw("_currentBalance") != nil ? c.double("_currentBalance") : c.double("currentBalance")
+        feeReset = c.optionalString("_feeReset") ?? c.optionalString("feeReset")
+        feeCarriedOver = c.raw("_feeCarriedOver") != nil ? c.double("_feeCarriedOver") : c.double("feeCarriedOver")
+        feeWrittenOff = c.raw("_feeWrittenOff") != nil ? c.double("_feeWrittenOff") : c.double("feeWrittenOff")
+        monthlyFee = (c.raw("_monthlyFee") ?? c.raw("monthlyFee"))?.amount
     }
 
     var effectiveStatus: String { currentStatus ?? status }
+
+    /// The fee of this month: the server's (fees over time), else the rate of the status in the fee settings.
+    func monthlyFee(_ fees: FeeSettings) -> Double { monthlyFee ?? fees.rate(for: effectiveStatus) }
     var sortedPayments: [Payment] { payments.sorted { $0.date > $1.date } }
 }
 

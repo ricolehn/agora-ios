@@ -7,7 +7,8 @@ enum LogicTests {
             ("Finances", FinanceTests.all),
             ("Events", EventTests.all),
             ("Texts and songbook", TextTests.all),
-            ("Server answers", ServerTests.all)
+            ("Server answers", ServerTests.all),
+            ("Fees over time", FeeTests.all)
         ])
         exit(failed == 0 ? 0 : 1)
     }
