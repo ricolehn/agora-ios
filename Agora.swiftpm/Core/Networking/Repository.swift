@@ -260,17 +260,31 @@ final class Repository: Sendable {
         }
     }
 
-    /// Donations and expenses are stored as whole lists: read, change, write back ([change] nil: nothing to write).
+    /// Donations and expenses are stored as whole lists: read the list with its version, change it, write it back with
+    /// that version ([change] nil: nothing to write), like Android. A list someone else saved meanwhile is refused (409)
+    /// and read and changed again – without the version, an entry the web or Android added in between was lost. Servers
+    /// before CALDERA send no version and save the list as before.
     private func mutateCollection(_ name: String, _ change: ([JSONValue]) -> [JSONValue]?) async throws {
-        let current: JSONValue = try await api.get("/api/db", query: ["path": name])
-        let list: [JSONValue]
-        switch current {
-        case .array(let items): list = items
-        case .object(let map): list = map.keys.sorted().compactMap { map[$0] }
-        default: list = []
+        for attempt in 0..<3 {
+            let raw: JSONValue = try await api.get("/api/db", query: ["path": name, "raw": "1"])
+            let list: [JSONValue]
+            switch raw["value"] ?? .null {
+            case .array(let items): list = items
+            case .object(let map): list = map.keys.sorted().compactMap { map[$0] }
+            default: list = []
+            }
+            guard let next = change(list.filter { !$0.isNull }) else { return }
+            var body: JSONValue = ["path": .string(name), "value": .array(next)]
+            if let version = raw["version"]?.text, !version.isEmpty { body["version"] = .string(version) }
+            do {
+                try await api.perform(.put, "/api/db", body: body)
+                return
+            } catch let error as APIError where error.status == 409 && attempt < 2 {
+                // A short random pause, so devices that collided do not collide again
+                try? await Task.sleep(nanoseconds: UInt64.random(in: 50_000_000...400_000_000))
+                continue
+            }
         }
-        guard let next = change(list.filter { !$0.isNull }) else { return }
-        try await api.perform(.put, "/api/db", body: ["path": .string(name), "value": .array(next)])
     }
 
     private static func nowId() -> Double { (Date().timeIntervalSince1970 * 1000).rounded() }

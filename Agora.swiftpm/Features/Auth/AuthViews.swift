@@ -118,6 +118,8 @@ struct ServerView: View {
             } catch let api as APIError where api.status == 426 || (api.status == 503 && api.message == AppStore.setupRequired) {
                 // The app's own answers (https required, server not set up); a proxy's 503 counts as not reachable
                 error = api.message
+            } catch let api as APIError where api.isStarting {
+                error = APIError.text(api)
             } catch let api as APIError {
                 error = api.message.isEmpty ? "Agora-Server nicht erreichbar" : "Agora-Server nicht erreichbar (\(api.message))"
             } catch {

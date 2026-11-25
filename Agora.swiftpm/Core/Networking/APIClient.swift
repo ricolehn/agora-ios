@@ -72,7 +72,11 @@ final class APIClient: @unchecked Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        if let token, isOwnHost(url) { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        if isOwnHost(url) {
+            if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+            // The app speaks German: the server's messages too (CALDERA's old API answers English without it)
+            request.setValue("de-DE,de;q=0.9", forHTTPHeaderField: "Accept-Language")
+        }
         return request
     }
 
@@ -189,16 +193,8 @@ final class APIClient: @unchecked Sendable {
         }
     }
 
-    /// Route handlers answer `{error}` JSON, the auth middleware answers plain text.
-    static func error(status: Int, body: Data) -> APIError {
-        if let object = try? JSONDecoder().decode([String: JSONValue].self, from: body),
-           let message = object["error"]?.text ?? object["message"]?.text, !message.isEmpty {
-            return APIError(status: status, message: message)
-        }
-        let text = String(decoding: body, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        if !text.isEmpty, !text.hasPrefix("<") { return APIError(status: status, message: String(text.prefix(200))) }
-        return APIError(status: status, message: "HTTP \(status)")
-    }
+    /// Route handlers answer `{error}` JSON (API v2 `{error: {code, message}}`), the auth middleware plain text.
+    static func error(status: Int, body: Data) -> APIError { APIError.parse(status: status, body: body) }
 
     // MARK: Streams
 
