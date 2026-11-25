@@ -10,7 +10,18 @@ extension Repository {
 
     // MARK: Songbook
 
-    func songbook() async throws -> Songbook { try await api.get("/api/songs") }
+    /// Every song by title, with the church's CCLI licence number, and whether the person manages the songbook.
+    func songbook() async throws -> Songbook {
+        try await v2Or({
+            async let me: JSONValue = v2.call(.get, "/me")
+            let list = try await v2.collect("/songs", of: JSONValue.self)
+            let book: JSONValue = [
+                "songs": .array(list.items.map(V2Community.song)), "ccliLicense": list.first["ccliLicense"] ?? .string(""),
+                "canManage": (try? await me)?["can"]?["manageSongbook"] ?? .bool(false)
+            ]
+            return try api.decoder.decode(Songbook.self, from: api.encoder.encode(book))
+        }, { try await api.get("/api/songs") })
+    }
 
     /// Creates a song (`id` nil) or saves an existing one; returns the song as stored.
     func saveSong(id: String?, _ input: SongInput) async throws -> Song {
@@ -24,35 +35,48 @@ extension Repository {
             "capo": input.capo.map { JSONValue.number(Double($0)) } ?? JSONValue.null,
             "tempo": input.tempo.map { JSONValue.number(Double($0)) } ?? JSONValue.null
         ]
-        if let id {
-            return try await api.send(.put, "/api/songs/\(segment(id))", body: body)
-        }
-        return try await api.send(.post, "/api/songs", body: body)
+        return try await v2Or({
+            let saved: JSONValue = try await v2.call(id == nil ? .post : .patch, id.map { "/songs/\(ApiV2.segment($0))" } ?? "/songs", body: body)
+            return try api.decoder.decode(Song.self, from: api.encoder.encode(V2Community.song(saved)))
+        }, {
+            if let id { return try await api.send(.put, "/api/songs/\(segment(id))", body: body) }
+            return try await api.send(.post, "/api/songs", body: body)
+        })
     }
 
     func deleteSong(id: String) async throws {
-        try await api.perform(.delete, "/api/songs/\(segment(id))")
+        try await v2Or({ try await v2.perform(.delete, "/songs/\(ApiV2.segment(id))") },
+                       { try await api.perform(.delete, "/api/songs/\(segment(id))") })
     }
 
     // MARK: Prayer requests
 
     /// The running requests (newest first) plus the own expired ones.
-    func prayers() async throws -> PrayerList { try await api.get("/api/prayers") }
+    func prayers() async throws -> PrayerList {
+        try await v2Or({
+            let list = try await v2.collect("/prayers", of: JSONValue.self)
+            let answer: JSONValue = ["prayers": .array(list.items.map(V2Community.prayer)), "canModerate": list.first["canModerate"] ?? .bool(false)]
+            return try api.decoder.decode(PrayerList.self, from: api.encoder.encode(answer))
+        }, { try await api.get("/api/prayers") })
+    }
 
     func sharePrayer(text: String, duration: PrayerDuration, anonymous: Bool) async throws {
-        try await api.perform(.post, "/api/prayers", body: [
-            "text": .string(text), "duration": .string(duration.rawValue), "anonymous": .bool(anonymous)
-        ])
+        let body: JSONValue = ["text": .string(text), "duration": .string(duration.rawValue), "anonymous": .bool(anonymous)]
+        try await v2Or({ try await v2.perform(.post, "/prayers", body: body) }, { try await api.perform(.post, "/api/prayers", body: body) })
     }
 
     /// The owner adds a month (from the later of now and the old end).
     func extendPrayer(id: String, duration: PrayerDuration = .month) async throws -> Prayer {
-        try await api.send(.patch, "/api/prayers/\(segment(id))", body: ["extend": .string(duration.rawValue)])
+        try await v2Or({
+            let prayer: JSONValue = try await v2.call(.patch, "/prayers/\(ApiV2.segment(id))", body: ["extend": .string(duration.rawValue)])
+            return try api.decoder.decode(Prayer.self, from: api.encoder.encode(V2Community.prayer(prayer)))
+        }, { try await api.send(.patch, "/api/prayers/\(segment(id))", body: ["extend": .string(duration.rawValue)]) })
     }
 
     /// Done (owner) or removed by a member with the manage_prayers permission.
     func deletePrayer(id: String) async throws {
-        try await api.perform(.delete, "/api/prayers/\(segment(id))")
+        try await v2Or({ try await v2.perform(.delete, "/prayers/\(ApiV2.segment(id))") },
+                       { try await api.perform(.delete, "/api/prayers/\(segment(id))") })
     }
 
     // MARK: Order of service

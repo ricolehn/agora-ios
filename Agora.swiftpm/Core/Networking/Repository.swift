@@ -144,23 +144,41 @@ final class Repository: Sendable {
 
     /// Reports an AI reply ("ai") or a conversation ("chat") to the admins.
     func report(type: String, content: String, reason: String, prompt: String = "", threadId: String = "") async throws {
-        var body: JSONValue = ["type": .string(type), "content": .string(content), "reason": .string(reason)]
-        if !prompt.isEmpty { body["prompt"] = .string(prompt) }
-        if !threadId.isEmpty { body["threadId"] = .string(threadId) }
-        try await api.perform(.post, "/api/reports", body: body)
+        try await v2Or({
+            // v2 refuses longer texts instead of cutting them
+            var body: JSONValue = ["type": .string(type), "content": .string(String(content.prefix(4000))), "reason": .string(String(reason.prefix(500)))]
+            if type == "ai", !prompt.isEmpty { body["prompt"] = .string(String(prompt.prefix(4000))) }
+            if type == "chat" { body["threadId"] = .string(threadId) }
+            try await v2.perform(.post, "/reports", body: body)
+        }, {
+            var body: JSONValue = ["type": .string(type), "content": .string(content), "reason": .string(reason)]
+            if !prompt.isEmpty { body["prompt"] = .string(prompt) }
+            if !threadId.isEmpty { body["threadId"] = .string(threadId) }
+            try await api.perform(.post, "/api/reports", body: body)
+        })
     }
 
     // MARK: Profile & settings
 
     func uploadProfilePicture(jpeg: Data) async throws {
-        let _: JSONValue = try await api.upload("/api/profile/picture",
-                                                file: .init(field: "picture", fileName: "profile.jpg", mimeType: "image/jpeg", data: jpeg))
+        let file = APIClient.FilePart(field: "picture", fileName: "profile.jpg", mimeType: "image/jpeg", data: jpeg)
+        try await v2Or({ let _: JSONValue = try await v2.upload("/me/picture", method: .put, file: file) },
+                       { let _: JSONValue = try await api.upload("/api/profile/picture", file: file) })
     }
 
     func profilePictureURL(_ uid: String) -> URL? { uid.isEmpty ? nil : api.absolute("/api/profile/picture/\(uid)") }
 
     /// Saves channels and kinds like the web (the flat keys repeat the push choice for older servers and apps).
     func saveNotificationSettings(uid: String, _ prefs: NotificationPrefs) async throws {
+        if v2.available {
+            let settings: JSONValue = [
+                "channels": ["push": .bool(prefs.channels.push), "email": .bool(prefs.channels.email)],
+                "push": prefs.push.json, "email": prefs.email.json
+            ]
+            do {
+                return try await v2.perform(.patch, "/me", body: ["notificationSettings": settings])
+            } catch is V2Unavailable {}
+        }
         var settings = prefs.push.json
         settings["channels"] = ["push": .bool(prefs.channels.push), "email": .bool(prefs.channels.email)]
         settings["push"] = prefs.push.json
@@ -178,7 +196,9 @@ final class Repository: Sendable {
     func syncTimeZone(_ user: User) async throws {
         let zone = TimeZone.current.identifier
         guard !zone.isEmpty, zone != user.timeZone, !user.userId.isEmpty else { return }
-        try await api.perform(.patch, "/api/db", body: ["path": .string("users/\(user.userId)"), "value": ["timeZone": .string(zone)]])
+        try await v2Or({ try await v2.perform(.patch, "/me", body: ["timeZone": .string(zone)]) }, {
+            try await api.perform(.patch, "/api/db", body: ["path": .string("users/\(user.userId)"), "value": ["timeZone": .string(zone)]])
+        })
     }
 
     func calendarFeed() async throws -> CalendarFeed {
@@ -190,12 +210,21 @@ final class Repository: Sendable {
     }
 
     func inviteCode() async -> String? {
-        guard let value: JSONValue = try? await api.get("/api/db", query: ["path": "system/inviteCode"]) else { return nil }
-        return value.text
+        let value: JSONValue? = try? await v2Or({ (try await v2.call(.get, "/registration-code", as: JSONValue.self))["code"] ?? .null },
+                                                { try await api.get("/api/db", query: ["path": "system/inviteCode"]) })
+        return value?.text
     }
 
-    func setInviteCode(_ code: String) async throws {
-        try await api.perform(.put, "/api/db", body: ["path": "system/inviteCode", "value": .string(code)])
+    /// A new registration code (the one before stops working): through v2 the server makes it, the old API takes one.
+    func newInviteCode() async throws -> String {
+        try await v2Or({
+            let answer: JSONValue = try await v2.call(.post, "/registration-code")
+            return answer["code"]?.text ?? ""
+        }, {
+            let code = String(Int.random(in: 100_000...999_999))
+            try await api.perform(.put, "/api/db", body: ["path": "system/inviteCode", "value": .string(code)])
+            return code
+        })
     }
 
     /// The fees of this month per status: through API v2 from the fees over time (`GET /fees`, `currentCents`).
@@ -790,45 +819,86 @@ final class Repository: Sendable {
 
     // MARK: Mentoring
 
-    func threads() async throws -> [MentoringThread] { try await api.get("/api/mentoring/threads", as: LossyList<MentoringThread>.self).items }
+    /// A value of v2 in the old API's shape read as the app's model.
+    private func community<T: Decodable>(_ value: JSONValue, as type: T.Type = T.self) throws -> T {
+        try api.decoder.decode(T.self, from: api.encoder.encode(value))
+    }
 
+    func threads() async throws -> [MentoringThread] {
+        try await v2Or({
+            try await v2.all("/mentoring/threads", of: JSONValue.self).items.compactMap { try? community(V2Community.thread($0), as: MentoringThread.self) }
+        }, { try await api.get("/api/mentoring/threads", as: LossyList<MentoringThread>.self).items })
+    }
+
+    /// The messages of a conversation, the oldest first – and what the other one wrote is read (through v2 the
+    /// conversation's answer says which part the reader has in it; v2 hands the messages out newest first).
     func messages(threadId: String) async throws -> [ChatMessage] {
-        try await api.get("/api/mentoring/threads/\(threadId)/messages", as: LossyList<ChatMessage>.self).items
+        try await v2Or({
+            let thread: JSONValue = try await v2.call(.post, "/mentoring/threads/\(ApiV2.segment(threadId))/read")
+            let role = thread["role"]?.text ?? "mentee"
+            let list = try await v2.all("/mentoring/threads/\(ApiV2.segment(threadId))/messages", of: JSONValue.self).items
+            return list.compactMap { try? community(V2Community.message($0, threadId: threadId, myRole: role), as: ChatMessage.self) }.reversed()
+        }, { try await api.get("/api/mentoring/threads/\(threadId)/messages", as: LossyList<ChatMessage>.self).items })
     }
 
     func sendMessage(threadId: String, text: String) async throws {
-        try await api.perform(.post, "/api/mentoring/threads/\(threadId)/messages", body: ["text": .string(text)])
+        try await v2Or({ try await v2.perform(.post, "/mentoring/threads/\(ApiV2.segment(threadId))/messages", body: ["text": .string(text)]) },
+                       { try await api.perform(.post, "/api/mentoring/threads/\(threadId)/messages", body: ["text": .string(text)]) })
     }
 
     /// "closed", "active" (reopen) or "blocked".
     func setThreadStatus(threadId: String, _ status: String) async throws {
-        try await api.perform(.patch, "/api/mentoring/threads/\(threadId)/status", body: ["status": .string(status)])
+        try await v2Or({ try await v2.perform(.patch, "/mentoring/threads/\(ApiV2.segment(threadId))", body: ["status": .string(status)]) },
+                       { try await api.perform(.patch, "/api/mentoring/threads/\(threadId)/status", body: ["status": .string(status)]) })
     }
 
+    /// The approved mentors by name – or, for those who manage mentoring, those of [status] (pending, rejected, all).
     func mentors(status: String? = nil) async throws -> [Mentor] {
-        try await api.get("/api/mentoring/mentors", query: status.map { ["status": $0] } ?? [:], as: LossyList<Mentor>.self).items
+        try await v2Or({
+            try await v2.all("/mentoring/mentors", of: JSONValue.self, query: status.map { ["status": $0] } ?? [:]).items
+                .compactMap { try? community(V2Community.mentor($0), as: Mentor.self) }
+        }, { try await api.get("/api/mentoring/mentors", query: status.map { ["status": $0] } ?? [:], as: LossyList<Mentor>.self).items })
     }
 
-    func myMentorProfile() async -> MyMentorProfile { (try? await api.get("/api/mentoring/my-profile")) ?? MyMentorProfile() }
+    func myMentorProfile() async -> MyMentorProfile {
+        (try? await v2Or({ try community(V2Community.myProfile(try await v2.call(.get, "/mentoring/profile"))) },
+                         { try await api.get("/api/mentoring/my-profile") })) ?? MyMentorProfile()
+    }
 
+    /// Asks a mentor ([userId]: their account) with a first message; answers the new conversation's id.
     func contactMentor(userId: String, message: String) async throws -> String {
-        let response: CreateThreadResponse = try await api.send(.post, "/api/mentoring/threads",
-                                                                body: ["mentorId": .string(userId), "initialMessage": .string(message)])
-        return response.threadId
+        try await v2Or({
+            let thread: JSONValue = try await v2.call(.post, "/mentoring/threads", body: ["mentorUserId": .string(userId), "message": .string(message)])
+            return thread["id"]?.text ?? ""
+        }, {
+            let response: CreateThreadResponse = try await api.send(.post, "/api/mentoring/threads",
+                                                                    body: ["mentorId": .string(userId), "initialMessage": .string(message)])
+            return response.threadId
+        })
     }
 
+    /// Applies as a mentor ([isNew]) or changes the own profile.
     func saveMentorProfile(isNew: Bool, bio: String, maxMentees: Int, isAccepting: Bool) async throws {
-        var body: JSONValue = ["bio": .string(bio.trimmingCharacters(in: .whitespacesAndNewlines)), "max_mentees": .of(maxMentees)]
-        if !isNew { body["isAccepting"] = .bool(isAccepting) }
-        if isNew {
-            try await api.perform(.post, "/api/mentoring/apply", body: body)
-        } else {
-            try await api.perform(.put, "/api/mentoring/my-profile", body: body)
-        }
+        let text = bio.trimmingCharacters(in: .whitespacesAndNewlines)
+        try await v2Or({
+            var body: JSONValue = ["bio": .string(text), "maxMentees": .of(maxMentees)]
+            if !isNew { body["isAccepting"] = .bool(isAccepting) }
+            try await v2.perform(isNew ? .post : .patch, isNew ? "/mentoring/application" : "/mentoring/profile", body: body)
+        }, {
+            var body: JSONValue = ["bio": .string(text), "max_mentees": .of(maxMentees)]
+            if !isNew { body["isAccepting"] = .bool(isAccepting) }
+            if isNew {
+                try await api.perform(.post, "/api/mentoring/apply", body: body)
+            } else {
+                try await api.perform(.put, "/api/mentoring/my-profile", body: body)
+            }
+        })
     }
 
+    /// approved, rejected or pending – those who manage mentoring.
     func setMentorStatus(recordId: String, _ status: String) async throws {
-        try await api.perform(.post, "/api/mentoring/manage/\(recordId)/status", body: ["status": .string(status)])
+        try await v2Or({ try await v2.perform(.post, "/mentoring/mentors/\(ApiV2.segment(recordId))/status", body: ["status": .string(status)]) },
+                       { try await api.perform(.post, "/api/mentoring/manage/\(recordId)/status", body: ["status": .string(status)]) })
     }
 
     // MARK: AI

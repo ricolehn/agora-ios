@@ -144,7 +144,8 @@ final class APIClient: @unchecked Sendable {
     }
 
     /// Multipart form post; text fields go first (the server builds receipt names from them).
-    func upload<T: Decodable>(_ path: String, fields: [(String, String)] = [], file: FilePart, as type: T.Type = T.self) async throws -> T {
+    func upload<T: Decodable>(_ path: String, method: HTTPMethod = .post, fields: [(String, String)] = [], file: FilePart,
+                              as type: T.Type = T.self) async throws -> T {
         let boundary = "agora-\(UUID().uuidString)"
         var body = Data()
         func append(_ text: String) { body.append(Data(text.utf8)) }
@@ -154,7 +155,7 @@ final class APIClient: @unchecked Sendable {
         append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(file.field)\"; filename=\"\(file.fileName)\"\r\nContent-Type: \(file.mimeType)\r\n\r\n")
         body.append(file.data)
         append("\r\n--\(boundary)--\r\n")
-        var request = self.request(try url(path), method: .post)
+        var request = self.request(try url(path), method: method)
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
         request.timeoutInterval = 120

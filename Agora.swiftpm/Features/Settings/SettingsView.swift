@@ -155,10 +155,8 @@ private struct InviteCodeSection: View {
     }
 
     private func newInviteCode() {
-        let code = String(Int.random(in: 100_000...999_999))
         runner.run(toasts, success: String(localized: "Gespeichert")) {
-            try await store.repository.setInviteCode(code)
-            inviteCode = code
+            inviteCode = try await store.repository.newInviteCode()
         }
     }
 }

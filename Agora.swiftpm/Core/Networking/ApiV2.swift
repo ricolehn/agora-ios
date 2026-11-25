@@ -78,10 +78,10 @@ final class ApiV2: Sendable {
     }
 
     /// A file sent to v2 (multipart); as `call`, a server without v2 is found out.
-    func upload<T: Decodable>(_ path: String, file: APIClient.FilePart, as type: T.Type = T.self) async throws -> T {
+    func upload<T: Decodable>(_ path: String, method: HTTPMethod = .post, file: APIClient.FilePart, as type: T.Type = T.self) async throws -> T {
         guard api.apiV2 else { throw V2Unavailable() }
         do {
-            return try await api.upload(Self.base + path, file: file, as: type)
+            return try await api.upload(Self.base + path, method: method, file: file, as: type)
         } catch {
             if unavailable(error) { throw V2Unavailable() }
             throw error
