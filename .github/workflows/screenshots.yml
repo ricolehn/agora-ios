@@ -1,0 +1,94 @@
+name: Screenshots (iOS)
+
+# Runs the app in the iOS simulator against a throwaway Agora server with demo data and takes screenshots of the main
+# screens (scripts/screenshots/shots.txt) on an iPhone (light and dark), a small iPhone and an iPad. The screenshots,
+# the app's output and crash reports are uploaded as the artifact "screenshots". Started by hand, or by a push to a
+# claude/ working branch.
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: Only the screenshots whose name matches this regex (e.g. "member|treasurer")
+        required: false
+        default: "."
+  push:
+    branches: ["claude/**"]
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    name: Simulator screenshots
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      FILTER: ${{ github.event.inputs.filter || '.' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check out the Agora server
+        uses: actions/checkout@v5
+        with:
+          repository: ricolehn/agora
+          path: agora-server
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Select the newest stable Xcode
+        run: |
+          xcode="$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi -e beta -e rc | sort -V | tail -1)"
+          if [ -n "$xcode" ]; then sudo xcode-select -s "$xcode"; fi
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Build the app for the simulator (Debug)
+        working-directory: Agora.swiftpm
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -scheme Agora \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            | tee "$RUNNER_TEMP/build.log" | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" "$RUNNER_TEMP/build.log"
+          app="$(find "$RUNNER_TEMP/DerivedData/Build/Products" -maxdepth 2 -path "*iphonesimulator*" -name "*.app" -type d | head -1)"
+          echo "App: $app"
+          echo "APP=$app" >> "$GITHUB_ENV"
+
+      - name: Start the Agora server and fill it with demo data
+        run: |
+          ./scripts/screenshots/start-server.sh agora-server "$RUNNER_TEMP/server"
+          node scripts/screenshots/seed-server.mjs http://localhost:3000
+
+      - name: iPhone, light
+        run: ./scripts/screenshots/take.sh "$APP" '^iPhone \d+ Pro$||^iPhone' light shots/iphone-light "$FILTER"
+
+      - name: iPhone, dark
+        run: ./scripts/screenshots/take.sh "$APP" '^iPhone \d+ Pro$||^iPhone' dark shots/iphone-dark "$FILTER"
+
+      - name: Small iPhone, light
+        run: ./scripts/screenshots/take.sh "$APP" '^iPhone SE||^iPhone \d+ mini$||^iPhone 16e$' light shots/iphone-small "$FILTER"
+
+      - name: iPad, light
+        run: ./scripts/screenshots/take.sh "$APP" '^iPad Pro 13||^iPad Pro \(12.9||^iPad Air' light shots/ipad-light "$FILTER"
+
+      - name: Collect the logs
+        if: always()
+        run: |
+          mkdir -p shots/logs
+          cp "$RUNNER_TEMP/build.log" shots/logs/ 2>/dev/null || true
+          cp "$RUNNER_TEMP/server/server.log" "$RUNNER_TEMP/server/pocketbase.log" shots/logs/ 2>/dev/null || true
+          find shots -name "*.png" | sort
+
+      - name: Upload the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots
+          if-no-files-found: warn

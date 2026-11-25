@@ -1,0 +1,27 @@
+# The screenshots: name | account (from seed-server.mjs, "-" for none) | stage | tab | route | in-page tab index
+# Stages: server (first start), login, app. Routes: see App/ScreenshotDriver.swift.
+01-server            | -         | server |           |                                 |
+02-login             | -         | login  |           |                                 |
+10-member-home       | member    | app    | home      |                                 |
+11-member-finances   | member    | app    | finances  |                                 |
+12-member-termine    | member    | app    | events    |                                 | 0
+13-member-events     | member    | app    | events    |                                 | 1
+14-member-service    | member    | app    | events    | event:Gottesdienst              |
+15-member-evening    | member    | app    | events    | event:Gemeindeabend mit Grillen |
+16-member-mentoring  | member    | app    | mentoring |                                 | 0
+17-member-mentors    | member    | app    | mentoring |                                 | 1
+18-member-chat       | member    | app    | mentoring | chat                            |
+19-member-extras     | member    | app    | extras    |                                 |
+20-member-songbook   | member    | app    | extras    | songbook                        |
+21-member-prayers    | member    | app    | extras    | prayers                         | 0
+22-member-ai         | member    | app    | extras    | ai                              |
+23-member-settings   | member    | app    | home      | settings                        |
+30-treasurer-home    | treasurer | app    | home      |                                 |
+31-treasurer-finance | treasurer | app    | finances  |                                 | 0
+32-treasurer-members | treasurer | app    | finances  |                                 | 1
+40-events-termine    | events    | app    | events    |                                 | 0
+41-events-service    | events    | app    | events    | event:Gottesdienst              |
+42-events-new        | events    | app    | events    | new-event                       |
+50-mentoring-apps    | mentoring | app    | mentoring |                                 | 2
+60-admin-home        | admin     | app    | home      |                                 |
+61-admin-settings    | admin     | app    | home      | settings                        |

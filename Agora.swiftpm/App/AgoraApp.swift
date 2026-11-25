@@ -24,7 +24,12 @@ struct AgoraIOSApp: App {
                 .environment(router)
                 .preferredColorScheme(ThemeChoice(rawValue: theme)?.scheme)
                 .tint(Palette.primary)
-                .task { await store.restore() }
+                .task {
+                    await store.restore()
+                    #if DEBUG
+                    await ScreenshotDriver.run(store: store, router: router)
+                    #endif
+                }
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .active: store.didBecomeActive()

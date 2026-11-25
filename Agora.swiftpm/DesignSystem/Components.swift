@@ -197,6 +197,12 @@ struct PillTabs<Value: Hashable>: View {
         .padding(3)
         .background(Palette.pillTrack, in: Capsule())
         .overlay(Capsule().strokeBorder(Palette.borderLight, lineWidth: 1))
+        #if DEBUG
+        // CI screenshots of the in-page tabs (ScreenshotDriver)
+        .onAppear {
+            if let index = ScreenshotDriver.pill, items.indices.contains(index) { selection = items[index].value }
+        }
+        #endif
     }
 }
 
