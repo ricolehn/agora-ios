@@ -92,6 +92,53 @@ browser where something looks unclear: it decides.
     app to be mentioned on the server's account deletion page (`ACCOUNT_DELETION.md` / `account-deletion.html` in
     agora name only the Android app).
 
+## Catching up with CALDERA (November 2026)
+
+Since this handover the others moved on: the server and web app to *BA SING SE* and **3.4.0 *CALDERA*** (new database
+structure, API v2, monthly fees over time, the fresh start of the fee accounts, a finance change log, the media
+library, a choice of AI providers, a new web app in `web/`), Android to 1.3 and **1.4.1 *CHONG***, which follows
+CALDERA. iOS is still *APPA*. The web app's code at CALDERA is `git show v3.4.0:assets/…` in agora (its `develop`
+has the new Solid web app); the API is `docs/API_V2.md` there; the German texts of the new areas are in Android's
+`res/values-de/strings_fees.xml`, `strings_bookings.xml`, `strings_ai*.xml`, `strings_media.xml`, `strings_server.xml`.
+
+**Checked against a CALDERA server** (beta.lehn.site, read only, 25 November 2026): sign-in and every read the app
+makes at start answer through the old API, which CALDERA keeps for every app version (`docs/API_V2.md`). The fee
+state is right: the server applies fees over time and fresh starts to `_paidUntil` / `_overdueAmount`, and the app's
+own `Formats.paidUntilMonth` gives the server's month for all 56 members (in three time zones).
+
+**Work list, most important first** (Android commit hashes in brackets)
+
+1. *Writes that can lose money* (old API, also for servers before CALDERA):
+   - Donations and expenses are written as a whole list without a version: an entry the web or Android adds between
+     the read and the write is lost. CALDERA takes `POST /api/db/transaction {path:"donations"|"expenses",
+     currentVersion}` (read with `raw=1`, 409 when changed); older servers answer 400, keep the plain write there
+     (`0ff6cd1`).
+   - An approved standing order (and `bookPayment(standingOrder:)`) books the months up to today only with the
+     server's nightly run; the member looks overdue until then. The web books them when a treasurer loads; v2 at once.
+2. *Server answers:* send `Accept-Language: de`; read v2's error shape `{error:{code,message,field}}`; a starting or
+   upgrading server answers 503 `{starting:true}` with `Retry-After` – say "gleich noch einmal versuchen" and retry
+   instead of showing an error (`e3ec785`, `7e380b6`, `strings_server.xml`).
+3. *Fees (CALDERA):* show `_monthlyFee`, the fresh start (`_feeReset`, `_feeCarriedOver`, `_feeWrittenOff`: chip
+   "Neustart am …" for 60 days, marker in the history, hint for payments dated before it) and the fees page with its
+   history, planned change, preview and version (`/api/fees`, `/api/admin/fees*`, `/api/fee-reset*`; Android
+   `FeeLogic.kt` + `FeeLogicTest`, `ui/settings/FeeSettings.kt`; `7e47895`). The current page still works – the
+   server reads it as "these fees from this month on" – but shows no history and no preview.
+4. *Event editor:* refuse a minimum above the places ("Die Mindestzahl kann nicht höher als die Plätze sein.") and
+   show "noch 2 nötig (mind. 5)" / "Mindestzahl 5 erreicht"; the server refuses it now.
+5. *Security (Android 1.3.1, `c7cfbb2`):* Markdown links only `http(s)`, `mailto`, `tel`; exported reports deleted on
+   sign-out; the calendar subscription opened only as `webcal(s)` / `https`.
+6. *AI chat:* the stream carries `lookup` / `lookupDone` steps and `: ping`; text written before a lookup is a note,
+   not part of the answer; the thinking line and its steps (Android `AiReply.kt` + `AiReplyTest`, web
+   `assets/aiReply.js`). Port the regexes without Java-only flags: ICU refuses `(?U)` (`c6bf223`).
+7. *API v2* with the old API as fallback, all or nothing like Android (`ApiV2.kt`, `ApiV2Test`): the books and
+   requests (one-step `POST /requests/:id/decision {book:true}` instead of the client's booking), history edit and
+   delete for finance managers (`Bookings`, `BookingsTest`), calendar, account, songbook, prayers, mentoring.
+8. *Live updates:* `songs`, `prayers`, `polls` and `media` reload only their pages, not all members; profile pictures
+   with versions (`/api/profile/pictures`).
+9. *Media library* (Extras, Nextcloud): new for iOS (`MediaApi.kt`, `MediaLogic.kt` + `MediaLogicTest`, web
+   `assets/media.js`).
+10. *Look:* Extras as rows with 3D motifs, the AI's sign in lagoon and sand (`1ccacba`, `7283f29`).
+
 ## Open compared with Android
 
 **Larger features**
