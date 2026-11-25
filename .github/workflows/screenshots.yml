@@ -66,15 +66,23 @@ jobs:
           node scripts/screenshots/seed-server.mjs http://localhost:3000
 
       - name: iPhone, light
+        timeout-minutes: 15
+        continue-on-error: true
         run: ./scripts/screenshots/take.sh "$APP" '^iPhone \d+ Pro$||^iPhone' light shots/iphone-light "$FILTER"
 
       - name: iPhone, dark
+        timeout-minutes: 15
+        continue-on-error: true
         run: ./scripts/screenshots/take.sh "$APP" '^iPhone \d+ Pro$||^iPhone' dark shots/iphone-dark "$FILTER"
 
       - name: Small iPhone, light
+        timeout-minutes: 15
+        continue-on-error: true
         run: ./scripts/screenshots/take.sh "$APP" '^iPhone SE||^iPhone \d+ mini$||^iPhone 16e$' light shots/iphone-small "$FILTER"
 
       - name: iPad, light
+        timeout-minutes: 15
+        continue-on-error: true
         run: ./scripts/screenshots/take.sh "$APP" '^iPad Pro 13||^iPad Pro \(12.9||^iPad Air' light shots/ipad-light "$FILTER"
 
       - name: Collect the logs

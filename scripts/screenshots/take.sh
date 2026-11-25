@@ -39,14 +39,28 @@ if [ -z "$runtime" ] || [ -z "$devtype" ]; then
 fi
 echo "Runtime $runtime, device $(echo "$devtype" | cut -f2), $appearance"
 
+# Runs a command with a time limit (macOS has no `timeout`): a simulator command that hangs must not stop the run
+limit() {
+  local seconds="$1"; shift
+  "$@" & local pid=$!
+  ( sleep "$seconds"; kill -9 "$pid" 2>/dev/null && echo "::warning::timed out after ${seconds}s: $*" ) & local watchdog=$!
+  wait "$pid"; local status=$?
+  kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
+  return $status
+}
+stamp() { echo "[$(date -u +%H:%M:%S)] $*"; }
+
 udid="$(xcrun simctl create "Agora shots" "$(echo "$devtype" | cut -f1)" "$runtime")"
-trap 'xcrun simctl shutdown "$udid" >/dev/null 2>&1; xcrun simctl delete "$udid" >/dev/null 2>&1' EXIT
-xcrun simctl boot "$udid"
-xcrun simctl bootstatus "$udid" -b >/dev/null
-xcrun simctl ui "$udid" appearance "$appearance"
-xcrun simctl status_bar "$udid" override --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
+trap 'limit 60 xcrun simctl shutdown "$udid" >/dev/null 2>&1; limit 60 xcrun simctl delete "$udid" >/dev/null 2>&1' EXIT
+stamp "booting $udid"
+limit 60 xcrun simctl boot "$udid"
+limit 300 xcrun simctl bootstatus "$udid" -b >/dev/null
+stamp "booted"
+limit 30 xcrun simctl ui "$udid" appearance "$appearance"
+limit 30 xcrun simctl status_bar "$udid" override --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
   --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || true
-xcrun simctl install "$udid" "$app"
+limit 180 xcrun simctl install "$udid" "$app" || { echo "::error::the app could not be installed"; exit 1; }
+stamp "installed"
 
 account_email() {
   case "$1" in
@@ -64,11 +78,12 @@ while IFS='|' read -r name account stage tab route pill; do
   [[ "$name" =~ $filter ]] || continue
   account="$(trim "$account")"; stage="$(trim "$stage")"; tab="$(trim "$tab")"; route="$(trim "$route")"; pill="$(trim "$pill")"
   log="$out/app-$name.log"
-  xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
+  stamp "$name"
+  limit 20 xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
   SIMCTL_CHILD_AGORA_SHOT_STAGE="$stage" SIMCTL_CHILD_AGORA_SHOT_SERVER="$server" \
   SIMCTL_CHILD_AGORA_SHOT_EMAIL="$(account_email "$account")" SIMCTL_CHILD_AGORA_SHOT_PASSWORD="$password" \
   SIMCTL_CHILD_AGORA_SHOT_TAB="$tab" SIMCTL_CHILD_AGORA_SHOT_ROUTE="$route" SIMCTL_CHILD_AGORA_SHOT_PILL="$pill" \
-    xcrun simctl launch --terminate-running-process --stdout="$log" --stderr="$log" "$udid" "$bundle" \
+    limit 60 xcrun simctl launch --terminate-running-process --stdout="$log" --stderr="$log" "$udid" "$bundle" \
       -AppleLanguages "(de)" -AppleLocale de_DE >/dev/null
   # Until the driver says it is done (at most 40 s), then time for pictures and animations
   for _ in $(seq 1 80); do grep -q -e "AGORA_SHOT ready" -e "AGORA_SHOT failed" "$log" 2>/dev/null && break; sleep 0.5; done
@@ -77,11 +92,11 @@ while IFS='|' read -r name account stage tab route pill; do
     echo "::warning::$name: $(grep -h "AGORA_SHOT" "$log" 2>/dev/null | tail -1 || echo 'no answer from the app')"
     failed=$((failed + 1))
   fi
-  if ! xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "$bundle"; then
+  if ! limit 20 xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "$bundle"; then
     echo "::error::$name: the app is not running any more (crash?)"
     failed=$((failed + 1))
   fi
-  xcrun simctl io "$udid" screenshot --type=png "$out/$name.png" >/dev/null 2>&1 && echo "  $name"
+  limit 30 xcrun simctl io "$udid" screenshot --type=png "$out/$name.png" >/dev/null 2>&1 || echo "::warning::$name: no screenshot"
 done < "$here/shots.txt"
 
 # Crash reports of the app (the simulator writes them to the Mac's reports folder)
