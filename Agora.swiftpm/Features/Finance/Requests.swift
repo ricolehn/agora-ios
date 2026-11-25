@@ -422,7 +422,7 @@ struct RequestDetailSheet: View {
 
     private func reject() {
         let text = reason
-        submit(success: String(localized: "Anfrage abgelehnt")) { try await store.repository.rejectRequest(id: request.id, reason: text) }
+        submit(success: String(localized: "Anfrage abgelehnt")) { try await store.repository.rejectRequest(request, reason: text) }
     }
 
     /// Also when it was decided meanwhile (another treasurer, a second device): the list reloads and says so.

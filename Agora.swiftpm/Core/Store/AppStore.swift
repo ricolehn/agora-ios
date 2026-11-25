@@ -233,6 +233,13 @@ final class AppStore {
         if showIndicator { refreshing = true }
         defer { refreshing = false }
         let repo = repository
+        // Which API the server answers (v2 from CALDERA on): asked before the first load, then beside the loads, like
+        // Android – a server updated meanwhile is followed from the next load on
+        if repo.v2.available {
+            Task { await repo.checkServer() }
+        } else {
+            await repo.checkServer()
+        }
         let old = data
         let uid = user.userId
         let wantsAi = user.accessesAi

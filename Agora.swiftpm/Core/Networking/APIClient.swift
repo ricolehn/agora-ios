@@ -8,6 +8,7 @@ final class APIClient: @unchecked Sendable {
     private let lock = NSLock()
     private var _baseURL = ""
     private var _token: String?
+    private var _apiV2 = false
     private let userAgent: String
     private let session: URLSession
     let decoder = JSONDecoder()
@@ -30,7 +31,21 @@ final class APIClient: @unchecked Sendable {
 
     var baseURL: String {
         get { lock.withLock { _baseURL } }
-        set { lock.withLock { _baseURL = newValue.trimmingCharacters(in: .whitespaces).droppingSuffix("/") } }
+        set {
+            lock.withLock {
+                let url = newValue.trimmingCharacters(in: .whitespaces).droppingSuffix("/")
+                // Another server answers what it answers: whether it has API v2 is asked again (Repository.checkServer)
+                if url != _baseURL { _apiV2 = false }
+                _baseURL = url
+            }
+        }
+    }
+
+    /// Whether the app goes through the server's API v2 (CALDERA), as far as it knows: set by `Repository.checkServer`,
+    /// cleared when a v2 route turns out to be missing (`ApiV2`).
+    var apiV2: Bool {
+        get { lock.withLock { _apiV2 } }
+        set { lock.withLock { _apiV2 = newValue } }
     }
 
     var token: String? {

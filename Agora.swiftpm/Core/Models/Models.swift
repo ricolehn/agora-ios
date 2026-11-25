@@ -7,11 +7,17 @@ import Foundation
 
 struct StatusResponse: Codable, Sendable {
     var setupMode = false
+    /// The versions of the server's API (CALDERA: [1, 2]); none on older servers.
+    var apiVersions: [Int] = []
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
         setupMode = c.bool("setupMode")
+        apiVersions = (c.raw("apiVersions")?.arrayValue ?? []).compactMap { $0.amount.map { Int($0) } }
     }
+
+    /// Whether the server lists API v2.
+    var answersV2: Bool { apiVersions.contains(2) }
 }
 
 struct AuthResponse: Decodable, Sendable {
@@ -313,6 +319,8 @@ struct Payment: Codable, Hashable, Identifiable, Sendable {
     var description = ""
     var isAuto = false
 
+    init() {}
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
         id = c.string("id")
@@ -330,6 +338,8 @@ struct StandingOrder: Codable, Hashable, Identifiable, Sendable {
     var endDate: String?
     var note = ""
     var lastAutoPayment: String?
+
+    init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
@@ -349,6 +359,8 @@ struct StatusHistoryEntry: Codable, Hashable, Sendable {
     var status = ""
     var startDate = ""
     var endDate: String?
+
+    init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
@@ -401,6 +413,12 @@ struct Person: Codable, Hashable, Identifiable, Sendable {
     var feeWrittenOff = 0.0
     /// This month's fee of the member as the server counts it (fees over time); nil on servers before CALDERA.
     var monthlyFee: Double?
+    /// Read through API v2: the member's record id and the version of its books, which a change through v2 names.
+    /// `id` stays the key the old API knows the member by.
+    var memberId: String?
+    var version: String?
+
+    init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
@@ -426,6 +444,9 @@ struct Person: Codable, Hashable, Identifiable, Sendable {
         feeCarriedOver = c.raw("_feeCarriedOver") != nil ? c.double("_feeCarriedOver") : c.double("feeCarriedOver")
         feeWrittenOff = c.raw("_feeWrittenOff") != nil ? c.double("_feeWrittenOff") : c.double("feeWrittenOff")
         monthlyFee = (c.raw("_monthlyFee") ?? c.raw("monthlyFee"))?.amount
+        // Only the on-device cache writes these (a member read through v2)
+        memberId = c.optionalString("memberId")
+        version = c.optionalString("version")
     }
 
     var effectiveStatus: String { currentStatus ?? status }
@@ -445,6 +466,11 @@ struct FinanceRequest: Codable, Hashable, Identifiable, Sendable {
     var status = "pending"
     var rejectionReason: String?
     var timestamp: Int64 = 0
+    /// Read through API v2: decided there in one step (`POST /requests/:id/decision`); its member's record id.
+    var v2 = false
+    var memberId: String?
+
+    init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
@@ -457,6 +483,8 @@ struct FinanceRequest: Codable, Hashable, Identifiable, Sendable {
         status = c.string("status", "pending")
         rejectionReason = c.optionalString("rejectionReason")
         timestamp = c.int64("timestamp")
+        v2 = c.bool("v2")
+        memberId = c.optionalString("memberId")
     }
 
     func field(_ key: String) -> String? { data[key]?.text }
@@ -505,6 +533,8 @@ struct Transaction: Codable, Hashable, Identifiable, Sendable {
     var personId = ""
     var receipt: String?
     var isAuto = false
+
+    init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)

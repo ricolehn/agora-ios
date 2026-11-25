@@ -91,7 +91,7 @@ struct BookPaymentSheet: View {
     private func save() {
         let value = Amount.typed(amount) ?? 0
         action.run(toasts: toasts, success: String(localized: "Zahlung gebucht"), dismiss: dismiss) {
-            try await store.repository.bookPayment(personId: person.id, amount: value, date: date,
+            try await store.repository.bookPayment(person: person, amount: value, date: date,
                                                    note: note.trimmingCharacters(in: .whitespacesAndNewlines), standingOrder: standingOrder)
             onDone()
         }
@@ -128,7 +128,7 @@ struct ChangeStatusSheet: View {
 
     private func save() {
         action.run(toasts: toasts, success: String(localized: "Status geändert"), dismiss: dismiss) {
-            try await store.repository.changeStatus(personId: person.id, status: status, date: date)
+            try await store.repository.changeStatus(person: person, status: status, date: date)
             onDone()
         }
     }
@@ -178,14 +178,14 @@ struct ManageStandingOrderSheet: View {
 
     private func end() {
         action.run(toasts: toasts, success: String(localized: "Dauerauftrag aktualisiert"), dismiss: dismiss) {
-            try await store.repository.endStandingOrder(personId: person.id, orderId: order.id, endDate: endDate)
+            try await store.repository.endStandingOrder(person: person, orderId: order.id, endDate: endDate)
             onDone()
         }
     }
 
     private func delete() {
         action.run(toasts: toasts, success: String(localized: "Dauerauftrag gelöscht"), dismiss: dismiss) {
-            try await store.repository.deleteStandingOrder(personId: person.id, orderId: order.id)
+            try await store.repository.deleteStandingOrder(person: person, orderId: order.id)
             onDone()
         }
     }

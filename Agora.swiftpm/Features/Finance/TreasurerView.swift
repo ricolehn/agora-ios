@@ -97,8 +97,8 @@ final class TreasuryModel {
     var pendingRequests: [FinanceRequest] = []
     var people: [Person] = []
     var transactions: [Transaction] = []
-    var page = 1
-    var totalPages = 1
+    /// Where the next page of the history starts (nil: no more).
+    var next: HistoryCursor?
     var search = ""
     var loading = false
     var loadingMore = false
@@ -115,15 +115,14 @@ final class TreasuryModel {
         async let stats = repo.stats()
         async let requests = repo.allRequests()
         async let people = repo.allPeople()
-        async let page = repo.transactions(page: 1, search: query)
+        async let page = repo.history(search: query, after: nil)
         do {
             let (s, r, p, t) = try await (stats, requests, people, page)
             self.stats = s
             pendingRequests = r.filter(\.isPending)
             self.people = p
             transactions = t.items
-            self.page = 1
-            totalPages = max(t.totalPages, 1)
+            next = t.next
             loaded = true
             error = nil
             // Opened cards keep their history and get it again with the new data (people no longer listed are dropped)
@@ -139,22 +138,20 @@ final class TreasuryModel {
         searchTask = Task {
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled else { return }
-            if let result = try? await store.repository.transactions(page: 1, search: search) {
+            if let result = try? await store.repository.history(search: search, after: nil) {
                 transactions = result.items
-                page = 1
-                totalPages = max(result.totalPages, 1)
+                next = result.next
             }
         }
     }
 
     func loadMore(_ store: AppStore) async {
-        guard !loadingMore, page < totalPages else { return }
+        guard !loadingMore, let cursor = next else { return }
         loadingMore = true
         defer { loadingMore = false }
-        if let result = try? await store.repository.transactions(page: page + 1, search: search) {
+        if let result = try? await store.repository.history(search: search, after: cursor) {
             transactions += result.items
-            page += 1
-            totalPages = max(result.totalPages, 1)
+            next = result.next
         }
     }
 
@@ -265,7 +262,7 @@ struct TransactionList: View {
                         .buttonStyle(.pressable)
                 }
             }
-            if model.page < model.totalPages {
+            if model.next != nil {
                 Button { Task { await model.loadMore(store) } } label: {
                     BusyLabel(title: "Mehr laden…", busy: model.loadingMore)
                 }
